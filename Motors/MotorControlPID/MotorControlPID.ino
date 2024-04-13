@@ -1,18 +1,21 @@
-#include <util/atomic.h> // For the ATOMIC_BLOCK macro
-#include <MotorController.h>
+// MotorControlPID.ino
 
-#define ENCA 2 // Sensor signal line A phase - YELLOW
-#define ENCB 3 // Sensor signal line B phase - GREEN
-#define PWM 5 // EN-A L298N PWM SIGNAL - BLUE
-#define IN1 6 // L298N detection direction 2 - PURPLE
-#define IN2 7 // L298N detection direction 1 - WHITE
+#include <util/atomic.h> // For the ATOMIC_BLOCK macro
+#include "src/MotorController.h"
+
+// #define ENCA 2 // Sensor signal line A phase - YELLOW
+// #define ENCB 3 // Sensor signal line B phase - GREEN
+// #define PWM 5 // EN-A L298N PWM SIGNAL - BLUE
+// #define IN1 6 // L298N detection direction 2 - PURPLE
+// #define IN2 7 // L298N detection direction 1 - WHITE
 #define MAXCPR 330 //1320 // PULSOS POR REVOLUCIÓN DEL MOTOR
 #define WRAD 48 // RADIO EN mm
 // #define PI 3.1416
 #define MAXRPM 330
 #define REFRESHRATE 50 // ms
 
-volatile int pulsos = 0; // specify pulsos as volatile: https://www.arduino.cc/reference/en/language/variables/variable-scope-qualifiers/volatile/
+MotorController MotorFL(5,2,3,6,7);
+
 volatile int theta = 0; // specify pulsos as volatile: https://www.arduino.cc/reference/en/language/variables/variable-scope-qualifiers/volatile/
 long prevT = 0;
 float eprev = 0;
@@ -43,13 +46,9 @@ int step=0;
 void setup() {
   TCCR1B = TCCR1B & B11111000 | B00000101;
   Serial.begin(115200);
-  pinMode(ENCA,INPUT);
-  pinMode(ENCB,INPUT);
-  attachInterrupt(digitalPinToInterrupt(ENCA),readEncoder,RISING);
+  attachInterrupt(digitalPinToInterrupt(MotorFL.EncAPin), ISRReadEncoderFL, RISING);
+  Serial.println("SETUP FINISHED");
   
-  pinMode(PWM,OUTPUT);
-  pinMode(IN1,OUTPUT);
-  pinMode(IN2,OUTPUT);
 }
 
 void loop() {
@@ -77,14 +76,14 @@ void loop() {
   if (deltaTms >= REFRESHRATE){
       //Modifica las variables de la interrupción forma atómica
       ATOMIC_BLOCK(ATOMIC_RESTORESTATE){
-        revoluciones = (float)pulsos/(float)MAXCPR;
+        revoluciones = (float)MotorFL.getPulses()/(float)MAXCPR;
         rps = revoluciones*1000/deltaTms;
         rpm = rps*60;
         rpm_filt = 0.854*rpm_filt + 0.0728*rpm + 0.0728*rpm_prev;
         rpm_prev = rpm;
-        // Serial.println(" - RPM: " + String(rpm) + " - pulsos: " + String(pulsos) + " - revoluciones: " + String(revoluciones) + " - RPS: " + String(rps) + " - deltaTs: " + String(deltaTs) + " - deltaTms: " + String(deltaTms));
+        Serial.println(" - RPM: " + String(rpm) + " - pulsos: " + String(MotorFL.getPulses()) + " - revoluciones: " + String(revoluciones) + " - RPS: " + String(rps) + " - deltaTs: " + String(deltaTs) + " - deltaTms: " + String(deltaTms));
         prevT = currT;
-        pulsos = 0;
+        MotorFL.resetPulses();
       }
     // error
     e = rpm - target; // original calculation
@@ -106,15 +105,16 @@ void loop() {
     }
     pwr_filt = 0.854*pwr_filt + 0.0728*pwr + 0.0728*pwr_prev;
     pwr_prev = pwr;
+    
     // motor direction
-    int dir = 1;
-    if(u<0){
-      dir = -1;
-    }
+    MotorFL.setDirection(u>0);
     // signal the motor
-    setMotor(getMotorDirection(u),pwr_filt,PWM,IN1,IN2);
+    MotorFL.setSpeed(pwr_filt);
     // store previous error
     eprev = e;
+
+    Serial.println(" - Speed: " + String(pwr_filt) + " - Target: " + String(target));
+        
     }    
     // if (deltaTms >= REFRESHRATE){
     //   Serial.println("Current Step: " + String(step) + 
@@ -134,6 +134,9 @@ void loop() {
 
 }
 
+void ISRReadEncoderFL(){
+  MotorFL.readEncoder();
+}
   // motor direction
 int getMotorDirection(float u){
     if(u<0){
@@ -157,16 +160,6 @@ void setMotor(int dir, int pwmVal, int pwm, int in1, int in2){
     digitalWrite(in1,LOW);
     digitalWrite(in2,LOW);
   }  
-}
-
-void readEncoder(){
-  int b = digitalRead(ENCB);
-  if(b > 0){
-    pulsos++;
-  }
-  else{
-    pulsos--;
-  }
 }
 
 void readSerialInput(){
@@ -216,6 +209,7 @@ float squaredInputSignal(float elapsed_time, float currT){
         }
     }
 }
+
 float squaredMultiInputSignal(float elapsed_time, float currT){
     if (fabs(elapsed_time) >= ChangeInputSignalTime){
         temporizadorCambioVelocidad = currT;

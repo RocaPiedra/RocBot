@@ -122,7 +122,7 @@ def main():
     ax = fig.subplots(3)
     fig.suptitle("Motor Data")
     
-    comPort = "COM5"
+    comPort = "COM6"
     baudRate = 115200
     realTimePlot = AnimationPlot(fig, ax)
     

@@ -1,5 +1,5 @@
 {
-    "port": "COM5",
+    "port": "COM9",
     "board": "arduino:avr:uno",
-    "sketch": "Motors\\pid_roc_filtered\\pid_roc_filtered.ino"
+    "sketch": "Motors\\MotorControlPID\\MotorControlPID.ino"
 }
