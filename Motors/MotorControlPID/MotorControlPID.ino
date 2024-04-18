@@ -81,7 +81,7 @@ void loop() {
         rpm = rps*60;
         rpm_filt = 0.854*rpm_filt + 0.0728*rpm + 0.0728*rpm_prev;
         rpm_prev = rpm;
-        Serial.println(" - RPM: " + String(rpm) + " - pulsos: " + String(MotorFL.getPulses()) + " - revoluciones: " + String(revoluciones) + " - RPS: " + String(rps) + " - deltaTs: " + String(deltaTs) + " - deltaTms: " + String(deltaTms));
+        // Serial.println(" - RPM: " + String(rpm) + " - pulsos: " + String(MotorFL.getPulses()) + " - revoluciones: " + String(revoluciones) + " - RPS: " + String(rps) + " - deltaTs: " + String(deltaTs) + " - deltaTms: " + String(deltaTms));
         prevT = currT;
         MotorFL.resetPulses();
       }
@@ -113,7 +113,7 @@ void loop() {
     // store previous error
     eprev = e;
 
-    Serial.println(" - Speed: " + String(pwr_filt) + " - Target: " + String(target));
+    // Serial.println(" - Speed: " + String(pwr_filt) + " - Target: " + String(target));
         
     }    
     // if (deltaTms >= REFRESHRATE){

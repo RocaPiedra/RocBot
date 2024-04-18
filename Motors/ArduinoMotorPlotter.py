@@ -27,12 +27,12 @@ class AnimationPlot:
         # Initialize variables to store the extracted values
         pwr_value = None
         rpm_value = None
+        target_rpm = None
+        measured_rpm = None
         if arduinoData_string is not None:
                 
             # Split the string into individual parts based on ";"
             parts = arduinoData_string.split(";")
-            target_rpm = None
-            measured_rpm = None
 
             # Iterate through the parts to find the data based on the string format
             for part in parts:
