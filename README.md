@@ -25,11 +25,14 @@ For Mega SCL is in D20 and SDA is in D21.
 
 
 # Parts
+
 Microcontrollers:
 - Arduino Uno
 - Arduino Mega2560 Pro Mini
 - ESP32
+
 Drivers:
 - L298N driver
+
 IMU: 
 - BNO085 (9DOF)
