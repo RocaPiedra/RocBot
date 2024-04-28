@@ -4,6 +4,75 @@ import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 import math
 
+class MotorData:
+
+    def __init__(self, motorID):
+        self.motorID = motorID;
+        self.current_pwr = []
+        self.current_rpm = []
+        self.filtered_pwr = []
+        self.filtered_rpm = []
+        self.target_rpm = []
+        self.error = []
+
+    def checkMotor(self, str:str):
+        # the first value in the block (after the &) must match with the defined motorID
+        if str.startswith(self.motorID):
+            return True
+        else:
+            return False
+
+    def update(self, serial_data, num_points_plotted):
+        target_rpm = None
+        measured_rpm = None
+        parts = serial_data.split(";")
+            # Iterate through the parts to find the data based on the string format
+        for part in parts:
+            if part is not None:
+                key_value_pair = part.split(":")
+                if len(key_value_pair) == 2:
+                    key, value = key_value_pair
+                    if key == "pwr":
+                        try:
+                            print(key + ":" + value)
+                            self.current_pwr.append(float(value))
+                        except:
+                            pass
+                    if key == "pwr_filt":
+                        try:
+                            print(key + ":" + value)
+                            self.filtered_pwr.append(float(value))
+                        except:
+                            pass
+                    elif key == "rpm":
+                        try:
+                            print(key + ":" + value)
+                            self.current_rpm.append(float(value))
+                            measured_rpm = float(value)
+                        except:
+                            pass
+                    elif key == "rpm_filt":
+                        try:
+                            print(key + ":" + value)
+                            self.filtered_rpm.append(float(value))
+                        except:
+                            pass
+                    elif key == "target":
+                        try:
+                            print(key + ":" + value)
+                            self.target_rpm.append(float(value))
+                            target_rpm = float(value)
+                        except:
+                            pass
+
+        if target_rpm is not None and measured_rpm is not None:
+            self.error.append(float(abs(target_rpm - measured_rpm)))
+        
+        self.current_pwr = self.current_pwr[-num_points_plotted:]
+        self.filtered_pwr = self.filtered_pwr[-num_points_plotted:]
+        self.current_rpm = self.current_rpm[-num_points_plotted:]
+        self.filtered_rpm = self.filtered_rpm[-num_points_plotted:]
+        self.target_rpm = self.target_rpm[-num_points_plotted:]
 
 
 class AnimationPlot:
@@ -16,87 +85,45 @@ class AnimationPlot:
         self.minY = -500
         self.title = "Arduino Data"
         
-    def animate(self, i, ser, pwrData, pwrFilteredData, rpmData, rpmFilteredData, targetRpmData, errorData):
-        ser.write(b'g')                                 # Transmit the char 'g' to receive the Arduino data point
+    def animate(self, i, serial:Serial, motors: list[MotorData]):
+        serial.write(b'g')                                 # Transmit the char 'g' to receive the Arduino data point
         arduinoData_string = None
         try:
-            arduinoData_string = ser.readline().decode('ascii') # Decode receive Arduino data as a formatted string
+            arduinoData_string = serial.readline().decode('ascii') # Decode receive Arduino data as a formatted string
             print(arduinoData_string)                                           # 'i' is a incrementing variable based upon frames = x argument
         except:
             pass
         # Initialize variables to store the extracted values
-        pwr_value = None
-        rpm_value = None
-        target_rpm = None
-        measured_rpm = None
         if arduinoData_string is not None:
                 
-            # Split the string into individual parts based on ";"
-            parts = arduinoData_string.split(";")
+            # Split the string into blocks of data per motor ";"
+            blocks = arduinoData_string.split("&")
 
             # Iterate through the parts to find the data based on the string format
-            for part in parts:
-                if part is not None:
-                    key_value_pair = part.split(":")
-                    if len(key_value_pair) == 2:
-                        key, value = key_value_pair
-                        if key == "pwr":
-                            try:
-                                print(key + ":" + value)
-                                pwrData.append(float(value))
-                            except:
-                                pass
-                        if key == "pwr_filt":
-                            try:
-                                print(key + ":" + value)
-                                pwrFilteredData.append(float(value))
-                            except:
-                                pass
-                        elif key == "rpm":
-                            try:
-                                print(key + ":" + value)
-                                rpmData.append(float(value))
-                                measured_rpm = float(value)
-                            except:
-                                pass
-                        elif key == "rpm_filt":
-                            try:
-                                print(key + ":" + value)
-                                rpmFilteredData.append(float(value))
-                            except:
-                                pass
-                        elif key == "target":
-                            try:
-                                print(key + ":" + value)
-                                targetRpmData.append(float(value))
-                                target_rpm = float(value)
-                            except:
-                                pass
-        
-        if target_rpm is not None and measured_rpm is not None:
-            errorData.append(float(abs(target_rpm - measured_rpm)))
-        
-        pwrData = pwrData[-self.numPointsPlotted:]
-        pwrFilteredData = pwrFilteredData[-self.numPointsPlotted:]
-        rpmData = rpmData[-self.numPointsPlotted:]
-        rpmFilteredData = rpmFilteredData[-self.numPointsPlotted:]
-        targetRpmData = targetRpmData[-self.numPointsPlotted:]
-        errorData = errorData[-self.numPointsPlotted:]
+            for block in blocks:
+                if block is not None:
+                    for motor in motors:
+                        if motor.checkMotor(block):
+                            motor.update(block, self.numPointsPlotted)        
         
         self.ax[0].clear() 
         self.ax[1].clear()
         self.ax[2].clear()   
         self.getPlotFormat()
         
-        self.ax[0].plot(rpmData)
-        if len(rpmFilteredData) > 0:
-            self.ax[0].plot(rpmFilteredData)
-        self.ax[0].plot(targetRpmData)
-        self.ax[1].plot(pwrData)
-        if len(pwrFilteredData) > 0:            
-            self.ax[1].plot(pwrFilteredData)
-        if len(errorData) > 0:
-            self.ax[2].plot(errorData)
+        for motor in motors:
+            if len(motor.current_rpm) > 0:
+                self.ax[0].plot(motor.current_rpm)
+            if len(motor.filtered_rpm) > 0:
+                self.ax[0].plot(motor.filtered_rpm)
+            if len(motor.target_rpm) > 0:
+                self.ax[0].plot(motor.target_rpm)
+            if len(motor.current_pwr) > 0:
+                self.ax[1].plot(motor.current_pwr)
+            if len(motor.filtered_pwr) > 0:
+                self.ax[1].plot(motor.filtered_pwr)
+            if len(motor.error) > 0:
+                self.ax[2].plot(motor.error)
         
 
     def getPlotFormat(self):
@@ -111,13 +138,9 @@ class AnimationPlot:
         self.ax[2].set_ylabel("Error [RPM]")
         
 def main():
-    rpmData = []
-    rpmFilteredData = []
-    pwrData = []
-    pwrFilteredData = []
-    targetRpm = []
-    errorData = []
-    
+    motorFL = MotorData("1")
+    motorFR = MotorData("2")
+    motores = [motorFL, motorFR]
     fig = plt.figure()
     ax = fig.subplots(3)
     fig.suptitle("Motor Data")
@@ -141,8 +164,7 @@ def main():
             # Note that 'fargs' parameter is where we pass in our dataList and Serial object. 
     ani = animation.FuncAnimation(fig, realTimePlot.animate, 
                                   frames=10, 
-                                  fargs=(serialObj, pwrData, pwrFilteredData,
-                                         rpmData, rpmFilteredData, targetRpm, errorData), 
+                                  fargs=(serialObj, motores), 
                                   interval=10) 
     plt.tight_layout()
     plt.show()                                              # Keep Matplotlib plot persistent on screen until it is closed
