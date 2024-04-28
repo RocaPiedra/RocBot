@@ -1,20 +1,19 @@
 // MotorController.cpp
 #include "Arduino.h"
 #include "MotorController.h"
+#include "PIDClass.h"
 
-MotorController::MotorController(int pwmPin, int EncAPin, int EncBPin, int In1Pin, int In2Pin) {
-  this->pwmPin = pwmPin;
-  this->EncAPin = EncAPin;
-  this->EncBPin = EncBPin;
-  this->In1Pin = In1Pin;
-  this->In2Pin = In2Pin;
-  pinMode(pwmPin, OUTPUT);  
-  pinMode(EncAPin,INPUT);
-  pinMode(EncBPin,INPUT);
-  pinMode(In1Pin,OUTPUT);
-  pinMode(In2Pin,OUTPUT);
-  // attachInterrupt(digitalPinToInterrupt(EncAPin), MotorController::readEncoder, RISING); // Can't do this here
-  
+MotorController::MotorController(int pwmPin, 
+                                int EncAPin, int EncBPin, 
+                                int In1Pin, int In2Pin, 
+                                float kp, float ki, float kd)
+    :pwmPin(pwmPin), EncAPin(EncAPin), EncBPin(EncBPin),
+    In1Pin(In1Pin), In2Pin(In2Pin), PID(kp, kd, ki) {
+    pinMode(pwmPin, OUTPUT);  
+    pinMode(EncAPin, INPUT);
+    pinMode(EncBPin, INPUT);
+    pinMode(In1Pin, OUTPUT);
+    pinMode(In2Pin, OUTPUT);
 }
 
 void MotorController::readEncoder(){
@@ -66,4 +65,14 @@ int MotorController::getTargetSpeed() {
 
 bool MotorController::getCurrentDirection() {
   return currentDirection;
+}
+
+void MotorController::controlMotor(float rpm, float target_rpm, float deltaTs){
+
+    float output = this->PID.CalculateOutput(rpm, target_rpm, deltaTs);
+    // motor direction
+    this->setDirection(output>0);
+    // signal the motor with the filtered output
+    this->setSpeed(this->PID.FilterOutput(output));
+
 }

@@ -122,7 +122,7 @@ def main():
     ax = fig.subplots(3)
     fig.suptitle("Motor Data")
     
-    comPort = "COM9"
+    comPort = "/dev/ttyACM0"#"COM9"
     baudRate = 115200
     realTimePlot = AnimationPlot(fig, ax)
     

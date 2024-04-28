@@ -15,12 +15,8 @@
 #define MAXRPM 330
 #define REFRESHRATE 5 // ms
 
-MotorController MotorFL(5,2,3,6,7);
-  // PID constants
-  // float kp = 0.8; //0.05
-  // float kd = 0.1; // 0.025;
-  // float ki = 1.0;// 1.0;
-PIDClass PID(0.8,0.1,1.0);
+MotorController MotorFR(5,2,3,6,7,0.8,0.1,1.0);
+MotorController MotorFL(10,8,9,11,12,0.8,0.1,1.0);
 
 volatile int theta = 0; // specify pulsos as volatile: https://www.arduino.cc/reference/en/language/variables/variable-scope-qualifiers/volatile/
 long prevT = 0;
@@ -42,6 +38,7 @@ int step=0;
 void setup() {
   TCCR1B = TCCR1B & B11111000 | B00000101;
   Serial.begin(115200);
+  attachInterrupt(digitalPinToInterrupt(MotorFR.EncAPin), ISRReadEncoderFR, RISING);
   attachInterrupt(digitalPinToInterrupt(MotorFL.EncAPin), ISRReadEncoderFL, RISING);
   Serial.println("SETUP FINISHED");
   
@@ -63,28 +60,26 @@ void loop() {
   float deltaTs = ((float) (currT - prevT))/( 1.0e6 );
   float deltaTms = ((float) (currT - prevT))/( 1.0e3 );
   float temporizadorCambioValor = fabs(((float) (currT - temporizadorCambioVelocidad))/( 1.0e6 )); // ms
-  // float pwr;
   
   if (deltaTms >= REFRESHRATE){
       //Modifica las variables de la interrupción forma atómica
       ATOMIC_BLOCK(ATOMIC_RESTORESTATE){
-        revoluciones = (float)MotorFL.getPulses()/(float)MAXCPR;
+        revoluciones = (float)MotorFR.getPulses()/(float)MAXCPR;
         rps = revoluciones*1000/deltaTms;
         rpm = rps*60;
         rpm_filt = 0.854*rpm_filt + 0.0728*rpm + 0.0728*rpm_prev;
         rpm_prev = rpm;
         prevT = currT;
-        MotorFL.resetPulses();
-      }
-    
-    // calculate PID output
-    float output = PID.CalculateOutput(rpm, target, deltaTs);
-    // motor direction
-    MotorFL.setDirection(output>0);
-    // signal the motor with the filtered output
-    MotorFL.setSpeed(PID.FilterOutput(output));
+        MotorFR.resetPulses();
+      }    
+    MotorFR.controlMotor(rpm, target, deltaTs);  
+    MotorFL.controlMotor(rpm, target, deltaTs);    
   }
   squaredMultiInputSignal(temporizadorCambioValor, currT);
+}
+
+void ISRReadEncoderFR(){
+  MotorFR.readEncoder();
 }
 
 void ISRReadEncoderFL(){
@@ -102,8 +97,8 @@ void readSerialInput(){
             Serial.println("target:"+ String(target_value) +
             ";rpm:"+ String(rpm)+
             ";rpm_filt:"+ String(rpm_filt)+
-            ";pwr:"+ String(PID.GetPower())+
-            ";pwr_filt:"+ String(PID.GetPowerFiltered()));            
+            ";pwr:"+ String(MotorFR.PID.GetPower())+
+            ";pwr_filt:"+ String(MotorFR.PID.GetPowerFiltered()));            
             
       } else {
       int rpm_val = Serial.parseInt();
