@@ -3,11 +3,12 @@
 #include "MotorController.h"
 #include "PIDClass.h"
 
-MotorController::MotorController(int pwmPin, 
+MotorController::MotorController(int motorPos, int pwmPin, 
                                 int EncAPin, int EncBPin, 
                                 int In1Pin, int In2Pin, 
                                 float kp, float ki, float kd)
-    :pwmPin(pwmPin), EncAPin(EncAPin), EncBPin(EncBPin),
+    :motorPos(motorPos), pwmPin(pwmPin),
+    EncAPin(EncAPin), EncBPin(EncBPin),
     In1Pin(In1Pin), In2Pin(In2Pin), PID(kp, kd, ki) {
     pinMode(pwmPin, OUTPUT);  
     pinMode(EncAPin, INPUT);
@@ -67,12 +68,32 @@ bool MotorController::getCurrentDirection() {
   return currentDirection;
 }
 
-void MotorController::controlMotor(float rpm, float target_rpm, float deltaTs){
+void MotorController::controlMotor(float target_rpm, float deltaTs){
+  this->target_rpm = target_rpm;
+  float output = this->PID.CalculateOutput(this->current_rpm, target_rpm, deltaTs);
+  // motor direction
+  this->setDirection(output>0);
+  // signal the motor with the filtered output
+  this->setSpeed(this->PID.FilterOutput(output));
 
-    float output = this->PID.CalculateOutput(rpm, target_rpm, deltaTs);
-    // motor direction
-    this->setDirection(output>0);
-    // signal the motor with the filtered output
-    this->setSpeed(this->PID.FilterOutput(output));
+}
+
+void MotorController::updateRPM(float max_cpr, float deltaTms){
+  
+  this->current_rpm = ((float)MotorController::getPulses()/(float)max_cpr*1000/deltaTms)*60;
+  this->filtered_rpm = 0.854*filtered_rpm + 0.0728*current_rpm + 0.0728*previous_rpm; //review filter
+  this->previous_rpm = current_rpm;
+  MotorController::resetPulses();
+
+}
+
+String MotorController::getMotorState(){
+  
+  return "&" + String(this->motorPos) + 
+          ";target:" + String(this->target_rpm)+
+          ";rpm:" + String(this->current_rpm)+
+          ";rpm_filt:" + String(this->filtered_rpm)+
+          ";pwr:" + String(this->PID.GetPower())+
+          ";pwr_filt:" + String(this->PID.GetPowerFiltered());
 
 }

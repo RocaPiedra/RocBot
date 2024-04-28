@@ -15,18 +15,14 @@
 #define MAXRPM 330
 #define REFRESHRATE 5 // ms
 
-MotorController MotorFR(5,2,3,6,7,0.8,0.1,1.0);
-MotorController MotorFL(10,8,9,11,12,0.8,0.1,1.0);
+MotorController MotorFR(2,5,2,3,6,7,0.8,0.1,1.0);
+MotorController MotorFL(1,10,8,9,11,12,0.8,0.1,1.0);
 
 volatile int theta = 0; // specify pulsos as volatile: https://www.arduino.cc/reference/en/language/variables/variable-scope-qualifiers/volatile/
 long prevT = 0;
 int target_value = 60;
 float aux_timer = 0;
 float change_value = 0;
-
-float rpm=0;
-float rpm_filt=0;
-float rpm_prev=0;
 
 unsigned long temp_ms;
 int signal_period = 10000; // ms
@@ -40,8 +36,7 @@ void setup() {
   Serial.begin(115200);
   attachInterrupt(digitalPinToInterrupt(MotorFR.EncAPin), ISRReadEncoderFR, RISING);
   attachInterrupt(digitalPinToInterrupt(MotorFL.EncAPin), ISRReadEncoderFL, RISING);
-  Serial.println("SETUP FINISHED");
-  
+  Serial.println("SETUP FINISHED");  
 }
 
 void loop() {
@@ -50,10 +45,6 @@ void loop() {
   //int target = 1200;
   readSerialInput();
   int target = target_value;
-  // float rpm;
-  float rps;
-  float revoluciones;
-
 
   // time difference
   long currT = micros();
@@ -63,17 +54,13 @@ void loop() {
   
   if (deltaTms >= REFRESHRATE){
       //Modifica las variables de la interrupción forma atómica
-      ATOMIC_BLOCK(ATOMIC_RESTORESTATE){
-        revoluciones = (float)MotorFR.getPulses()/(float)MAXCPR;
-        rps = revoluciones*1000/deltaTms;
-        rpm = rps*60;
-        rpm_filt = 0.854*rpm_filt + 0.0728*rpm + 0.0728*rpm_prev;
-        rpm_prev = rpm;
+      ATOMIC_BLOCK(ATOMIC_RESTORESTATE){        
+        MotorFR.updateRPM((float)MAXCPR, deltaTms);
+        MotorFL.updateRPM((float)MAXCPR, deltaTms);
         prevT = currT;
-        MotorFR.resetPulses();
       }    
-    MotorFR.controlMotor(rpm, target, deltaTs);  
-    MotorFL.controlMotor(rpm, target, deltaTs);    
+    MotorFR.controlMotor(target, deltaTs);  
+    MotorFL.controlMotor(target, deltaTs);    
   }
   squaredMultiInputSignal(temporizadorCambioValor, currT);
 }
@@ -94,12 +81,7 @@ void readSerialInput(){
       
       if(userInput == 'g'){                  // if we get expected value 
    // read the input pin
-            Serial.println("target:"+ String(target_value) +
-            ";rpm:"+ String(rpm)+
-            ";rpm_filt:"+ String(rpm_filt)+
-            ";pwr:"+ String(MotorFR.PID.GetPower())+
-            ";pwr_filt:"+ String(MotorFR.PID.GetPowerFiltered()));            
-            
+            Serial.println(MotorFL.getMotorState() + MotorFR.getMotorState());
       } else {
       int rpm_val = Serial.parseInt();
       if (rpm_val != 0) {

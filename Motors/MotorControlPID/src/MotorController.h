@@ -7,6 +7,7 @@
 
 class MotorController {
   public:
+    int motorPos;
     int pwmPin;
     int EncAPin;
     int EncBPin;
@@ -16,10 +17,14 @@ class MotorController {
     volatile int pulses;
     int currentSpeed;
     bool currentDirection;
+    float current_rpm=0;
+    float filtered_rpm=0;
+    float previous_rpm=0;
+    float target_rpm=0;
     PIDClass PID;
 
   public:
-    MotorController(int pwmPin, 
+    MotorController(int motorPos, int pwmPin, 
                     int EncAPin, int EncBPin, 
                     int In1Pin, int In2Pin, 
                     float kp, float ki, float kd);
@@ -32,7 +37,9 @@ class MotorController {
     void stop();
     int getTargetSpeed();
     bool getCurrentDirection();
-    void MotorController::controlMotor(float rpm, float target_rpm, float deltaTs);
+    void controlMotor(float target_rpm, float deltaTs);
+    void updateRPM(float max_cpr, float deltaTms);
+    String getMotorState();
 };
 
 #endif
