@@ -7,7 +7,7 @@
 
 class MotorController {
   public:
-    int motorPos;
+    String motorPos;
     int pwmPin;
     int EncAPin;
     int EncBPin;
@@ -24,7 +24,7 @@ class MotorController {
     PIDClass PID;
 
   public:
-    MotorController(int motorPos, int pwmPin, 
+    MotorController(String motorPos, int pwmPin, 
                     int EncAPin, int EncBPin, 
                     int In1Pin, int In2Pin, 
                     float kp, float ki, float kd);

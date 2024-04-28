@@ -138,8 +138,8 @@ class AnimationPlot:
         self.ax[2].set_ylabel("Error [RPM]")
         
 def main():
-    motorFL = MotorData("1")
-    motorFR = MotorData("2")
+    motorFL = MotorData("FL")
+    motorFR = MotorData("FR")
     motores = [motorFL, motorFR]
     fig = plt.figure()
     ax = fig.subplots(3)

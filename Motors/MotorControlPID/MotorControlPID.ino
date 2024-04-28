@@ -15,8 +15,8 @@
 #define MAXRPM 330
 #define REFRESHRATE 5 // ms
 
-MotorController MotorFR(2,5,2,3,6,7,0.8,0.1,1.0);
-MotorController MotorFL(1,10,8,9,11,12,0.8,0.1,1.0);
+MotorController MotorFR("FR",5,2,3,6,7,0.8,0.1,1.0);
+MotorController MotorFL("FL",10,8,9,11,12,0.8,0.1,1.0);
 
 volatile int theta = 0; // specify pulsos as volatile: https://www.arduino.cc/reference/en/language/variables/variable-scope-qualifiers/volatile/
 long prevT = 0;

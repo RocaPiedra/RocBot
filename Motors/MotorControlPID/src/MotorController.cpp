@@ -3,7 +3,7 @@
 #include "MotorController.h"
 #include "PIDClass.h"
 
-MotorController::MotorController(int motorPos, int pwmPin, 
+MotorController::MotorController(String motorPos, int pwmPin, 
                                 int EncAPin, int EncBPin, 
                                 int In1Pin, int In2Pin, 
                                 float kp, float ki, float kd)
