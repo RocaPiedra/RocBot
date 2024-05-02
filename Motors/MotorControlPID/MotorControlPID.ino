@@ -1,8 +1,8 @@
 // MotorControlPID.ino
 
 #include <util/atomic.h> // For the ATOMIC_BLOCK macro
-#include "src/MotorController.h"
-#include "src/PIDClass.h"
+#include "src/MotorController.hpp"
+#include "src/PIDClass.hpp"
 
 // #define ENCA 2 // Sensor signal line A phase - YELLOW
 // #define ENCB 3 // Sensor signal line B phase - GREEN
@@ -11,12 +11,11 @@
 // #define IN2 7 // L298N detection direction 1 - WHITE
 #define MAXCPR 330 //1320 // PULSOS POR REVOLUCIÓN DEL MOTOR
 #define WRAD 48 // RADIO EN mm
-// #define PI 3.1416
 #define MAXRPM 330
 #define REFRESHRATE 5 // ms
 
-MotorController MotorFR("FR",5,2,3,6,7,0.8,0.1,1.0);
-MotorController MotorFL("FL",10,8,9,11,12,0.8,0.1,1.0);
+MotorController MotorFR("FR",5,2,4,6,7,0.8,0.1,1.0);
+MotorController MotorFL("FL",10,3,9,11,12,0.8,0.1,1.0);
 
 volatile int theta = 0; // specify pulsos as volatile: https://www.arduino.cc/reference/en/language/variables/variable-scope-qualifiers/volatile/
 long prevT = 0;
@@ -81,7 +80,7 @@ void readSerialInput(){
       
       if(userInput == 'g'){                  // if we get expected value 
    // read the input pin
-            Serial.println(MotorFL.getMotorState() + MotorFR.getMotorState());
+            Serial.println(MotorFL.GetMotorState() + MotorFR.GetMotorState());
       } else {
       int rpm_val = Serial.parseInt();
       if (rpm_val != 0) {
@@ -142,36 +141,4 @@ float sinusoidalInputSignal(float elapsed_time, float currT, int step){
       // " elapsed_time: " + String(elapsed_time) + 
       // " target_value: " + String(target_value));
     }
-}
-
-float RPMtoMpS(float rpm){
-  return (2 * PI * (WRAD/1000)) / 60 * rpm;
-}
-
-void plotter_logger(int target, float real, float power, int error){
-  Serial.println("");
-  Serial.print("targetRPM:");
-  Serial.print(target);
-  Serial.print("|xy ");
-  Serial.print("realRPM:");
-  Serial.print(real);
-  Serial.print("|xy ");
-  Serial.print("PWR-output:");
-  Serial.print(power);
-  Serial.print("|xy ");
-  // Serial.print("error:");
-  // Serial.print(error);
-  // Serial.print("|xy ");
-  // Serial.print(" - E:");
-  // Serial.print(e);
-  // Serial.print(" - dEdt:");
-  // Serial.print(dedt);
-  // Serial.print(" - E Integral:");
-  // Serial.print(eintegral);
-  // Serial.print(" - PrevT:");
-  // Serial.print(prevT);
-  // Serial.print(" - CurrT:");
-  // Serial.print(micros());
-  // Serial.println("|xy ");
-
 }

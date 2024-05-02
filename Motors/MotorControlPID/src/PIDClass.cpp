@@ -1,11 +1,14 @@
 // PIDClass.cpp
 #include "Arduino.h"
-#include "PIDClass.h"
-
-PIDClass::PIDClass(float _kp, float _ki, float _kd){
-    kp = _kp;
-    ki = _ki;
-    kd = _kd;    
+#include "PIDClass.hpp"
+/*
+@brief PID Class constructor
+@param _kp proportional constant for the PID
+@param _ki integral constant for the PID
+@param _kd derivative constant for the PID
+*/
+PIDClass::PIDClass(float _kp, float _ki, float _kd):
+kp(_kp), ki(_ki), kd(_kd){ 
 }
 
 float PIDClass::CalculateOutput(float rpm, float target_rpm, float deltaTs){
