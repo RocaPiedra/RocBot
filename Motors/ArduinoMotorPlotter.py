@@ -7,7 +7,10 @@ import math
 class MotorData:
 
     def __init__(self, motorID):
-        self.motorID = motorID;
+        self.motorID = motorID
+        self.color1 = self.getColorByID()
+        self.color2 = self.getDarkColorByID()
+        self.colorT = self.getColorByID()
         self.current_pwr = []
         self.current_rpm = []
         self.filtered_pwr = []
@@ -22,6 +25,33 @@ class MotorData:
         else:
             return False
 
+    def getColorByID(self):
+        color_map = {
+            'FL': 'blue',  # Blue
+            'FR': 'red',  # Red
+            'BL': 'green',  # Green
+            'BR': 'yellow'   # Yellow
+        }
+        return color_map.get(self.motorID, 'k')
+    
+    def getDarkColorByID(self):
+        color_map = {
+            'FL': 'navy',  # Blue
+            'FR': 'darkred',  # Red
+            'BL': 'darkgreen',  # Green
+            'BR': 'darkgoldenrod'   # Yellow
+        }
+        return color_map.get(self.motorID, 'k')
+        
+    def getColorByID(id):
+        color_map = {
+            'FL': 'b',  # Blue
+            'FR': 'r',  # Red
+            'BL': 'g',  # Green
+            'BR': 'y'   # Yellow
+        }
+        return color_map.get(id, 'k')
+    
     def update(self, serial_data, num_points_plotted):
         target_rpm = None
         measured_rpm = None
@@ -113,17 +143,22 @@ class AnimationPlot:
         
         for motor in motors:
             if len(motor.current_rpm) > 0:
-                self.ax[0].plot(motor.current_rpm)
+                self.ax[0].plot(motor.current_rpm, color = motor.color1, label = u'[motor'+motor.motorID+']RPM')
             if len(motor.filtered_rpm) > 0:
-                self.ax[0].plot(motor.filtered_rpm)
+                self.ax[0].plot(motor.filtered_rpm, color = motor.color2, label = u'[motor'+motor.motorID+']filtered RPM')
             if len(motor.target_rpm) > 0:
-                self.ax[0].plot(motor.target_rpm)
+                self.ax[0].plot(motor.target_rpm, color = motor.colorT, label = u'[motor'+motor.motorID+']Target RPM')
             if len(motor.current_pwr) > 0:
-                self.ax[1].plot(motor.current_pwr)
+                self.ax[1].plot(motor.current_pwr, color = motor.color1, label = u'[motor'+motor.motorID+']PWR')
             if len(motor.filtered_pwr) > 0:
-                self.ax[1].plot(motor.filtered_pwr)
+                self.ax[1].plot(motor.filtered_pwr, color = motor.color2, label = u'[motor'+motor.motorID+']filtered PWR')
             if len(motor.error) > 0:
-                self.ax[2].plot(motor.error)
+                self.ax[2].plot(motor.error, color = motor.color1, label = u'[motor'+motor.motorID+']filtered PWR')
+        self.ax[0].legend()
+        self.ax[1].legend()
+        self.ax[2].legend()
+
+        # plt.legend()
         
 
     def getPlotFormat(self):
