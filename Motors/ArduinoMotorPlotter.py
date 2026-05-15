@@ -104,7 +104,6 @@ class MotorData:
         self.filtered_rpm = self.filtered_rpm[-num_points_plotted:]
         self.target_rpm = self.target_rpm[-num_points_plotted:]
 
-
 class AnimationPlot:
         
     def __init__(self, fig, ax):
@@ -180,7 +179,7 @@ def main():
     ax = fig.subplots(3)
     fig.suptitle("Motor Data")
     
-    comPort = "/dev/ttyACM0"#"COM9"
+    comPort = "/dev/ttyUSB0"#"COM9"
     baudRate = 115200
     realTimePlot = AnimationPlot(fig, ax)
     

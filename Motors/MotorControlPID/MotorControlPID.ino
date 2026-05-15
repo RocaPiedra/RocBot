@@ -4,24 +4,19 @@
 #include "src/MotorController.hpp"
 #include "src/PIDClass.hpp"
 
-// #define ENCA 2 // Sensor signal line A phase - YELLOW
-// #define ENCB 3 // Sensor signal line B phase - GREEN
-// #define PWM 5 // EN-A L298N PWM SIGNAL - BLUE
-// #define IN1 6 // L298N detection direction 2 - PURPLE
-// #define IN2 7 // L298N detection direction 1 - WHITE
 #define MAXCPR 330 //1320 // PULSOS POR REVOLUCIÓN DEL MOTOR
 #define WRAD 48 // RADIO EN mm
 #define MAXRPM 330
 #define REFRESHRATE 5 // ms
+#define NUMMOTORS 2
 
-MotorController MotorFR("FR",5,2,4,6,7,0.8,0.1,1.0);
-MotorController MotorFL("FL",10,3,9,11,12,0.8,0.1,1.0);
+MotorController MotorFR("FR",14,12,13,27,26,0.8,1.0,0.1);
+MotorController MotorFL("FL",32,35,34,33,25,0.8,1.0,0.1);
+MotorController motors[NUMMOTORS] = {MotorFL,MotorFR};
 
-volatile int theta = 0; // specify pulsos as volatile: https://www.arduino.cc/reference/en/language/variables/variable-scope-qualifiers/volatile/
-long prevT = 0;
+long prevT[NUMMOTORS] = {0,0};
+// int target_value[NUMMOTORS] = {60,60};
 int target_value = 60;
-float aux_timer = 0;
-float change_value = 0;
 
 unsigned long temp_ms;
 int signal_period = 10000; // ms
@@ -32,44 +27,45 @@ int step=0;
 
 void setup() {
   TCCR1B = TCCR1B & B11111000 | B00000101;
+  EIFR |= (1 << INTF1);
   Serial.begin(115200);
-  attachInterrupt(digitalPinToInterrupt(MotorFR.EncAPin), ISRReadEncoderFR, RISING);
   attachInterrupt(digitalPinToInterrupt(MotorFL.EncAPin), ISRReadEncoderFL, RISING);
+  attachInterrupt(digitalPinToInterrupt(MotorFR.EncAPin), ISRReadEncoderFR, RISING);
   Serial.println("SETUP FINISHED");  
 }
 
 void loop() {
 
-  // set target pulsostion
-  //int target = 1200;
   readSerialInput();
   int target = target_value;
-
-  // time difference
-  long currT = micros();
-  float deltaTs = ((float) (currT - prevT))/( 1.0e6 );
-  float deltaTms = ((float) (currT - prevT))/( 1.0e3 );
-  float temporizadorCambioValor = fabs(((float) (currT - temporizadorCambioVelocidad))/( 1.0e6 )); // ms
+  long currT = 0;
+  float temporizadorCambioValor = 0;
   
-  if (deltaTms >= REFRESHRATE){
-      //Modifica las variables de la interrupción forma atómica
-      ATOMIC_BLOCK(ATOMIC_RESTORESTATE){        
-        MotorFR.updateRPM((float)MAXCPR, deltaTms);
-        MotorFL.updateRPM((float)MAXCPR, deltaTms);
-        prevT = currT;
-      }    
-    MotorFR.controlMotor(target, deltaTs);  
-    MotorFL.controlMotor(target, deltaTs);    
+  for(int id = 0; id < NUMMOTORS; id++){
+    // measure elapsed time
+    currT = micros();
+    float deltaTms = ((float) (currT - prevT[id]))/( 1.0e3 );
+    temporizadorCambioValor = fabs(((float) (currT - temporizadorCambioVelocidad))/( 1.0e6 )); // ms
+
+    if (deltaTms >= REFRESHRATE){
+      ATOMIC_BLOCK(ATOMIC_RESTORESTATE){
+        motors[id].updateRPM((float)MAXCPR, deltaTms);
+      }
+      prevT[id] = currT;     
+      motors[id].controlMotor(target, deltaTms*1000);
+    }
   }
-  squaredMultiInputSignal(temporizadorCambioValor, currT);
+  squaredInputSignal(temporizadorCambioValor, currT);
 }
 
 void ISRReadEncoderFR(){
   MotorFR.readEncoder();
+  Serial.println("Flanco de subida en FR: Pin " + String(MotorFR.EncAPin) + " - Pulsos: " + String(MotorFR.GetPulses()));
 }
 
 void ISRReadEncoderFL(){
   MotorFL.readEncoder();
+  Serial.println("Flanco de subida en FL: Pin " + String(MotorFL.EncAPin) + " - Pulsos: " + String(MotorFL.GetPulses()));
 }
 
 void readSerialInput(){
@@ -80,7 +76,9 @@ void readSerialInput(){
       
       if(userInput == 'g'){                  // if we get expected value 
    // read the input pin
-            Serial.println(MotorFL.GetMotorState() + MotorFR.GetMotorState());
+        for(int id = 0; id < NUMMOTORS; id++){
+          Serial.println(motors[id].GetMotorState() + MotorFR.GetMotorState());
+        }
       } else {
       int rpm_val = Serial.parseInt();
       if (rpm_val != 0) {
@@ -103,10 +101,10 @@ void readSerialInput(){
 float squaredInputSignal(float elapsed_time, float currT){
     if (fabs(elapsed_time) >= ChangeInputSignalTime){
         temporizadorCambioVelocidad = currT;
-        if (target_value <= 60){
-          target_value = 180;
+        if (target_value <= 0){
+          target_value = 120;
         }else{
-          target_value = 60;
+          target_value = 0;
         }
     }
 }

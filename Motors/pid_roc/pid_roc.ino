@@ -1,7 +1,7 @@
 #include <util/atomic.h> // For the ATOMIC_BLOCK macro
 
 #define ENCA 2 // YELLOW
-#define ENCB 3 // GREEN
+#define ENCB 4 // GREEN
 #define PWM 5 // EN-A
 #define IN2 6
 #define IN1 7
@@ -168,7 +168,7 @@ void readSerialInput(){
       
       if(userInput == 'g'){                  // if we get expected value 
    // read the input pin
-            Serial.println("target:"+ String(target_value) +";rpm:"+ String(rpm)+";pwr:"+ String(pwr));            
+            Serial.println("&FL;target:"+ String(target_value) +";rpm:"+ String(rpm)+";pwr:"+ String(pwr));            
             
       } else {
       int rpm_val = Serial.parseInt();

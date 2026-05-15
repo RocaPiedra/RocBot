@@ -1,5 +1,5 @@
 #include <util/atomic.h> // For the ATOMIC_BLOCK macro
-#include <MotorController.h>
+// #include <MotorController.hpp>
 
 #define ENCA 2 // Sensor signal line A phase - YELLOW
 #define ENCB 3 // Sensor signal line B phase - GREEN
@@ -177,7 +177,7 @@ void readSerialInput(){
       
       if(userInput == 'g'){                  // if we get expected value 
    // read the input pin
-            Serial.println("target:"+ String(target_value) +
+            Serial.println("&FL;target:"+ String(target_value) +
             ";rpm:"+ String(rpm)+
             ";rpm_filt:"+ String(rpm_filt)+
             ";pwr:"+ String(pwr)+
