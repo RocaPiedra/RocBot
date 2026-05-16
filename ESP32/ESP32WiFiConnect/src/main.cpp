@@ -1,13 +1,13 @@
 #include <Arduino.h>
 #include "MotorController.hpp"
 #include "PIDClass.hpp"
-// #include <Wifi.h>
-// #include <WifiMulti.h>
-// #include "ssid.hpp"
+#include <WiFi.h>
+#include <WiFiMulti.h>
+#include "ssid.hpp"
 // #include <util/atomic.h> // For the ATOMIC_BLOCK macro
 
 
-// WiFiMulti myWiFi;
+WiFiMulti myWiFi;
 
 #define MAXCPR 330 //1320 // PULSOS POR REVOLUCIÓN DEL MOTOR
 #define WRAD 48 // RADIO EN mm
@@ -30,6 +30,14 @@ float temporizadorCambioVelocidad=0;
 
 int step=0;
 
+void readSerialInput();
+
+void squaredInputSignal(float elapsed_time, float currT);
+void squaredMultiInputSignal(float elapsed_time, float currT);
+void sinusoidalInputSignal(float elapsed_time, float currT, int step);
+void ISRReadEncoderFR();
+void ISRReadEncoderFL();
+
 void setup() {
   // TCCR1B = TCCR1B & B11111000 | B00000101;
   // EIFR |= (1 << INTF1);
@@ -38,19 +46,15 @@ void setup() {
   attachInterrupt(digitalPinToInterrupt(MotorFR.EncAPin), ISRReadEncoderFR, RISING);
   Serial.println("SETUP FINISHED");  
   // // pinMode(LED_BUILTIN, OUTPUT); // STATUS INDICATOR
-  // myWiFi.addAP(WIFI_SSID_1, WIFI_PASSWORD);
-  // myWiFi.addAP(WIFI_SSID_2, WIFI_PASSWORD);
-  // while (myWiFi.run() != WL_CONNECTED){
-  //   delay(100);
-  // }
-  // Serial.println("connected to " + String(WiFi.SSID()));
+  myWiFi.addAP(WIFI_SSID_1, WIFI_PASSWORD);
+  myWiFi.addAP(WIFI_SSID_2, WIFI_PASSWORD);
+  while (myWiFi.run() != WL_CONNECTED){
+    delay(100);
+  }
+  Serial.println("connected to " + String(WiFi.SSID()));
 }
 
 void loop() {
-
-  // digitalWrite(LED_BUILTIN, WiFi.status() == WL_CONNECTED);
-  // Serial.println("alive: connected to " + String(WiFi.SSID()));
-    // delay(1000);
   readSerialInput();
   int target = target_value;
   long currT = 0;
@@ -75,19 +79,17 @@ void loop() {
 
 void ISRReadEncoderFR(){
   MotorFR.readEncoder();
-  Serial.println("Flanco de subida en FR: Pin " + String(MotorFR.EncAPin) + " - Pulsos: " + String(MotorFR.GetPulses()));
 }
 
 void ISRReadEncoderFL(){
   MotorFL.readEncoder();
-  Serial.println("Flanco de subida en FL: Pin " + String(MotorFL.EncAPin) + " - Pulsos: " + String(MotorFL.GetPulses()));
 }
 
 void readSerialInput(){
   
   if (Serial.available() > 0) {
     // read the incoming byte:
-    float userInput = Serial.read();               // read user input
+    char userInput = Serial.read();               // read user input
       
       if(userInput == 'g'){                  // if we get expected value 
    // read the input pin
@@ -113,7 +115,7 @@ void readSerialInput(){
   }
 }
 
-float squaredInputSignal(float elapsed_time, float currT){
+void squaredInputSignal(float elapsed_time, float currT){
     if (fabs(elapsed_time) >= ChangeInputSignalTime){
         temporizadorCambioVelocidad = currT;
         if (target_value <= 0){
@@ -124,7 +126,7 @@ float squaredInputSignal(float elapsed_time, float currT){
     }
 }
 
-float squaredMultiInputSignal(float elapsed_time, float currT){
+void squaredMultiInputSignal(float elapsed_time, float currT){
     if (fabs(elapsed_time) >= ChangeInputSignalTime){
         temporizadorCambioVelocidad = currT;
         if (target_value == 60){
@@ -145,7 +147,7 @@ float squaredMultiInputSignal(float elapsed_time, float currT){
     }
 }
 
-float sinusoidalInputSignal(float elapsed_time, float currT, int step){
+void sinusoidalInputSignal(float elapsed_time, float currT, int step){
     if (fabs(elapsed_time) >= ChangeInputSignalTime){
       temporizadorCambioVelocidad = currT;
       float t = step * signal_period;
