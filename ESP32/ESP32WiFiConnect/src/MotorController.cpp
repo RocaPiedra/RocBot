@@ -24,10 +24,10 @@ void MotorController::readEncoder(){
   // NOTE: Your encoder is INVERTED compared to default logic
   int b = digitalRead(EncBPin);
   if(b == 0){
-    this->pulses++;   // ENCB LOW = forward (was > 0 before)
+    this->pulses--;   // ENCB LOW = forward (was > 0 before)
   }
   else{
-    this->pulses--;   // ENCB HIGH = reverse (was == 0 before)
+    this->pulses++;   // ENCB HIGH = reverse (was == 0 before)
   }
 }
 
@@ -55,8 +55,8 @@ void MotorController::SetSpeed(int speed) {
 }
 
 void MotorController::SetDirection(bool direction) {
-  digitalWrite(this->In1Pin, direction ? HIGH : LOW);
-  digitalWrite(this->In2Pin, direction ? LOW : HIGH);
+  digitalWrite(this->In1Pin, direction ? LOW : HIGH);
+  digitalWrite(this->In2Pin, direction ? HIGH : LOW);
   currentDirection = direction;
 }
 
