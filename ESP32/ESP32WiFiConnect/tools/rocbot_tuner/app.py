@@ -297,7 +297,7 @@ def update_motor_cards():
         if motor_id in motor_cards:
             cards = motor_cards[motor_id]
             cards["rpm"].set_text(f"RPM: {motor.rpm:.1f}")
-            cards["filt"].set_text(f"Filtered: {motor.rpm_filt:.1f}")
+            cards["filt"].set_text(f"Filtered RPM: {motor.rpm_filt:.1f}")
             cards["pwm"].set_text(f"PWM: {motor.pwr_filt:.1f}")
             cards["dir"].set_text(f"Dir: {motor.direction}")
             cards["err"].set_text(f"Error: {motor.error:.1f}")
@@ -503,97 +503,104 @@ def auto_update():
 
 # ─── Main UI Layout ──────────────────────────────────────────────────────
 
+# Global state for drawer toggle
+sidebar_open = True
 
-with ui.header().classes("items-center justify-between bg-gray-900 text-white"):
-    ui.label("🤖 RocBot PID Tuner").classes("text-xl font-bold")
+# Header
+with ui.header().classes("items-center justify-between bg-gray-900 text-white px-4"):
+    with ui.row().classes("items-center gap-3"):
+        ui.button("☰", on_click=lambda: drawer.toggle()).props("flat dense color=white size=sm")
+        ui.label("RocBot PID Tuner").classes("text-lg font-bold")
     with ui.row().classes("items-center gap-4"):
-        status_label = ui.label("● Disconnected").classes("text-sm")
-        mode_label = ui.label("Mode: STOP").classes("text-sm")
-        log_label = ui.label("📝 Logging: OFF").classes("text-sm text-gray-400")
+        status_label = ui.label("● Disconnected").classes("text-xs")
+        mode_label = ui.label("Mode: STOP").classes("text-xs")
+        log_label = ui.label("Logging: OFF").classes("text-xs text-gray-400")
 
-with ui.row().classes("w-full gap-4 p-4"):
-    # ─── Left Panel: Controls ─────────────────────────────────────────
-    with ui.column().classes("w-80 gap-4"):
+# Left Drawer (collapsible side menu)
+with ui.left_drawer(fixed=True).props("bordered").classes("bg-gray-900 w-64") as drawer:
+    with ui.scroll_area().classes("fit p-3"):
         # Connection
-        with ui.card().classes("w-full"):
-            ui.label("Connection").classes("text-lg font-bold")
-            port_input = ui.input(label="Port", value="/dev/ttyUSB0").classes("w-full")
-            baud_input = ui.input(label="Baud", value="115200").classes("w-full")
-            with ui.row().classes("gap-2"):
-                ui.button("Connect", on_click=connect_serial).props("color=green")
-                ui.button("Disconnect", on_click=disconnect_serial).props("color=red")
+        ui.label("Connection").classes("text-xs font-bold text-gray-400 mb-1 uppercase tracking-wide")
+        port_input = ui.input(value="/dev/ttyUSB0").classes("w-full").props("dense outlined dark label=Port color=primary")
+        baud_input = ui.input(value="115200").classes("w-full mt-1").props("dense outlined dark label=Baud color=primary")
+        with ui.row().classes("gap-1 mt-1 w-full"):
+            ui.button("Connect", on_click=connect_serial).props("dense color=green size=sm").classes("flex-1")
+            ui.button("Disconnect", on_click=disconnect_serial).props("dense color=red size=sm").classes("flex-1")
 
-        # Mode Control
-        with ui.card().classes("w-full"):
-            ui.label("Mode").classes("text-lg font-bold")
-            with ui.row().classes("gap-2"):
-                ui.button("PID", on_click=set_mode_pid).props("color=blue")
-                ui.button("Direct", on_click=set_mode_direct).props("color=orange")
-                ui.button("Stop", on_click=stop_motors).props("color=red")
+        ui.separator().classes("my-2 bg-gray-700")
 
-        # Target RPM
-        with ui.card().classes("w-full"):
-            ui.label("Target").classes("text-lg font-bold")
-            ui.number(label="Target RPM", value=30, min=-330, max=330,
-                      step=1, format="%.0f").bind_value(state, "target_rpm")
-            ui.button("Set Target", on_click=set_target).props("color=primary")
+        # Mode
+        ui.label("Mode").classes("text-xs font-bold text-gray-400 mb-1 uppercase tracking-wide")
+        with ui.row().classes("gap-1"):
+            ui.button("PID", on_click=set_mode_pid).props("dense color=blue size=sm").classes("flex-1")
+            ui.button("Direct", on_click=set_mode_direct).props("dense color=orange size=sm").classes("flex-1")
+            ui.button("Stop", on_click=stop_motors).props("dense color=red size=sm").classes("flex-1")
+
+        ui.separator().classes("my-2 bg-gray-700")
+
+        # Target
+        ui.label("Target").classes("text-xs font-bold text-gray-400 mb-1 uppercase tracking-wide")
+        ui.number(value=30, min=-330, max=330, step=1, format="%.0f").bind_value(state, "target_rpm").props("dense outlined dark label=RPM color=primary").classes("w-full")
+        ui.button("Set Target", on_click=set_target).props("dense color=primary size=sm").classes("w-full mt-1")
+
+        ui.separator().classes("my-2 bg-gray-700")
 
         # Direct PWM
-        with ui.card().classes("w-full"):
-            ui.label("Direct PWM").classes("text-lg font-bold")
-            ui.number(label="PWM", value=100, min=0, max=255,
-                      step=1, format="%.0f").bind_value(state, "direct_pwm")
+        ui.label("Direct PWM").classes("text-xs font-bold text-gray-400 mb-1 uppercase tracking-wide")
+        ui.number(value=100, min=0, max=255, step=1, format="%.0f").bind_value(state, "direct_pwm").props("dense outlined dark label=PWM color=primary").classes("w-full")
+
+        ui.separator().classes("my-2 bg-gray-700")
 
         # PID Parameters
-        with ui.card().classes("w-full"):
-            ui.label("PID Parameters").classes("text-lg font-bold")
-            kp_slider = ui.number(label="Kp", value=1.0, min=0, max=100, step=0.1,
-                                  format="%.2f").bind_value(state, "kp")
-            ki_slider = ui.number(label="Ki", value=0.0, min=0, max=10, step=0.01,
-                                  format="%.3f").bind_value(state, "ki")
-            kd_slider = ui.number(label="Kd", value=0.0, min=0, max=10, step=0.01,
-                                  format="%.3f").bind_value(state, "kd")
-            os_slider = ui.number(label="Output Scale", value=10.0, min=1, max=100, step=1,
-                                  format="%.0f").bind_value(state, "output_scale")
-            ui.button("Apply PID", on_click=send_pid_params).props("color=primary")
+        ui.label("PID Parameters").classes("text-xs font-bold text-gray-400 mb-1 uppercase tracking-wide")
+        ui.number(value=1.0, min=0, max=100, step=0.1, format="%.2f").bind_value(state, "kp").props("dense outlined dark label=Kp color=primary").classes("w-full")
+        ui.number(value=0.0, min=0, max=10, step=0.01, format="%.3f").bind_value(state, "ki").props("dense outlined dark label=Ki color=primary").classes("w-full mt-1")
+        ui.number(value=0.0, min=0, max=10, step=0.01, format="%.3f").bind_value(state, "kd").props("dense outlined dark label=Kd color=primary").classes("w-full mt-1")
+        ui.number(value=10.0, min=1, max=100, step=1, format="%.0f").bind_value(state, "output_scale").props("dense outlined dark label=Output Scale color=primary").classes("w-full mt-1")
+        ui.button("Apply PID", on_click=send_pid_params).props("dense color=primary size=sm").classes("w-full mt-1")
+
+        ui.separator().classes("my-2 bg-gray-700")
 
         # Step Test
-        with ui.card().classes("w-full"):
-            ui.label("Step Test").classes("text-lg font-bold")
-            ui.number(label="Duration (s)", value=5.0, min=1, max=30, step=0.5,
-                      format="%.1f").bind_value(state, "step_test_duration")
-            ui.button("▶ Run Step Test", on_click=start_step_test).props("color=orange")
+        ui.label("Step Test").classes("text-xs font-bold text-gray-400 mb-1 uppercase tracking-wide")
+        ui.number(value=5.0, min=1, max=30, step=0.5, format="%.1f").bind_value(state, "step_test_duration").props("dense outlined dark label=Duration (s) color=primary").classes("w-full")
+        ui.button("▶ Run Step Test", on_click=start_step_test).props("dense color=orange size=sm").classes("w-full mt-1")
 
-        # Logging & Utils
-        with ui.card().classes("w-full"):
-            ui.label("Utilities").classes("text-lg font-bold")
-            ui.button("📝 Toggle Logging", on_click=toggle_logging).props("color=secondary")
-            ui.button("🗑 Clear Buffers", on_click=clear_buffers).props("color=grey")
+        ui.separator().classes("my-2 bg-gray-700")
 
-    # ─── Right Panel: Plots + Metrics ─────────────────────────────────
-    with ui.column().classes("flex-1 gap-4"):
-        # Motor state cards
-        with ui.row().classes("w-full gap-4"):
-            for motor_id in ["FL", "FR"]:
-                with ui.card().classes("flex-1"):
-                    ui.label(f"Motor {motor_id}").classes("text-lg font-bold")
+        # Utilities
+        ui.label("Utilities").classes("text-xs font-bold text-gray-400 mb-1 uppercase tracking-wide")
+        with ui.row().classes("gap-1"):
+            ui.button("📝 Log", on_click=toggle_logging).props("dense color=secondary size=sm").classes("flex-1")
+            ui.button("🗑 Clear", on_click=clear_buffers).props("dense color=grey size=sm").classes("flex-1")
+
+# Main content area
+with ui.column().classes("w-full flex-1 p-3 gap-3"):
+    # Motor status bar
+    with ui.row().classes("w-full gap-3"):
+        for motor_id in ["FL", "FR"]:
+            with ui.card().classes("flex-1 p-3"):
+                with ui.row().classes("w-full items-center"):
+                    ui.label(motor_id).classes("text-sm font-bold mr-4 w-8")
                     motor_cards[motor_id] = {
-                        "rpm": ui.label("RPM: 0.0"),
-                        "filt": ui.label("Filtered: 0.0"),
-                        "pwm": ui.label("PWM: 0.0"),
-                        "dir": ui.label("Dir: STP"),
-                        "err": ui.label("Error: 0.0"),
+                        "rpm": ui.label("RPM: 0.0").classes("text-xs w-24"),
+                        "filt": ui.label("F: 0.0").classes("text-xs w-24"),
+                        "pwm": ui.label("PWM: 0.0").classes("text-xs w-24"),
+                        "dir": ui.label("Dir: STP").classes("text-xs w-20"),
+                        "err": ui.label("Err: 0.0").classes("text-xs"),
                     }
 
-        # Plots
-        rpm_chart = ui.echart(build_rpm_chart()).classes("w-full h-64")
-        pwr_chart = ui.echart(build_pwr_chart()).classes("w-full h-56")
-        error_chart = ui.echart(build_error_chart()).classes("w-full h-56")
+    # Charts - fill remaining space with explicit heights
+    with ui.column().classes("w-full gap-2"):
+        rpm_chart = ui.echart(build_rpm_chart()).classes("w-full h-80")
+        pwr_chart = ui.echart(build_pwr_chart()).classes("w-full h-64")
+        error_chart = ui.echart(build_error_chart()).classes("w-full h-64")
 
-        # Metrics
-        with ui.card().classes("w-full"):
-            ui.label("Step Response Metrics").classes("text-lg font-bold")
-            metrics_label = ui.markdown("Run a step test to see metrics here.")
+    # Metrics bar at bottom
+    with ui.card().classes("w-full p-2"):
+        with ui.row().classes("w-full items-center"):
+            ui.label("Step Response").classes("text-xs font-bold mr-4")
+            metrics_label = ui.markdown("Run a step test to see metrics.").classes("text-xs flex-1")
 
 # ─── Auto-update timer ───────────────────────────────────────────────────
 
