@@ -15,7 +15,7 @@ WiFiMulti myWiFi;
 #define REFRESHRATE 5 // ms
 #define NUMMOTORS 2
 
-MotorController MotorFR("FR",14,12,13,27,26,0.8,1.0,0.1);
+MotorController MotorFR("FR",14,22,23,27,26,0.8,1.0,0.1);
 MotorController MotorFL("FL",32,35,34,33,25,0.8,1.0,0.1);
 MotorController motors[NUMMOTORS] = {MotorFL,MotorFR};
 
@@ -29,6 +29,8 @@ float ChangeInputSignalTime=2;//signal_period/360;// para periodo de 10s // para
 float temporizadorCambioVelocidad=0;
 
 int step=0;
+
+static unsigned long lastPrint = 0;
 
 void readSerialInput();
 
@@ -73,8 +75,21 @@ void loop() {
       prevT[id] = currT;     
       motors[id].controlMotor(target, deltaTms*1000);
     }
+    int pulsesFR = MotorFR.GetPulses();
+    int pulsesFL = MotorFL.GetPulses();
+    if (millis() - lastPrint > 500) {
+    lastPrint = millis();
+
+    Serial.print("FR: ");
+    Serial.print(pulsesFR);
+
+    Serial.print(" FL: ");
+    Serial.println(pulsesFL);
+}
   }
-  squaredInputSignal(temporizadorCambioValor, currT);
+  // squaredInputSignal(temporizadorCambioValor, currT);
+  sinusoidalInputSignal(temporizadorCambioValor, currT, step);
+  step++;
 }
 
 void ISRReadEncoderFR(){
@@ -123,6 +138,8 @@ void squaredInputSignal(float elapsed_time, float currT){
         }else{
           target_value = 0;
         }
+        Serial.print("Changing target value to: ");
+        Serial.println(target_value);
     }
 }
 
