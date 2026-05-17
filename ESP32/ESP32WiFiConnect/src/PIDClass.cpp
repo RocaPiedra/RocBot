@@ -12,8 +12,8 @@ kp(_kp), ki(_ki), kd(_kd){
 }
 
 float PIDClass::CalculateOutput(float rpm, float target_rpm, float deltaTs){
-    // error
-    e = rpm - target_rpm; // original calculation
+    // error: positive when we need to go faster, negative when we need to slow down
+    e = target_rpm - rpm; // FIXED: was "rpm - target_rpm" which inverted direction
     // derivative
     dedt = (e-e_prev)/(deltaTs);
     // integral
