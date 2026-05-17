@@ -18,12 +18,16 @@ MotorController::MotorController(String motorPos, int PWMPin,
 }
 
 void MotorController::readEncoder(){
+  // ENCB level determines direction on ENCA rising edge
+  // If ENCB is LOW when encoder A rises, count UP (forward)
+  // If ENCB is HIGH when encoder A rises, count DOWN (reverse)
+  // NOTE: Your encoder is INVERTED compared to default logic
   int b = digitalRead(EncBPin);
-  if(b > 0){
-    this->pulses++;
+  if(b == 0){
+    this->pulses++;   // ENCB LOW = forward (was > 0 before)
   }
   else{
-    this->pulses--;
+    this->pulses--;   // ENCB HIGH = reverse (was == 0 before)
   }
 }
 
