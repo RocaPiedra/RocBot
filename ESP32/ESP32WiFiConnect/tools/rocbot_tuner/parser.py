@@ -4,7 +4,7 @@ import re
 import time
 from typing import Optional
 
-from .transport.base import MotorState, ControllerState
+from rocbot_tuner.models import MotorState, ControllerState
 
 
 def parse_debug_line(line: str, start_time: float) -> Optional[ControllerState]:
@@ -61,6 +61,7 @@ def parse_debug_line(line: str, start_time: float) -> Optional[ControllerState]:
 
         motor = parse_motor_debug_block(part)
         if motor:
+            motor.target_rpm = state.target_value
             state.motors[motor.motor_id] = motor
 
     return state if state.motors else None
@@ -71,8 +72,8 @@ def parse_motor_debug_block(block: str) -> Optional[MotorState]:
     Parse a motor debug block:
     FL RPM:28.5 F:28.1 PWM:120.5 Out:12.0 Dir:FWD Pulses:42
     """
-    # Must start with motor ID
-    id_match = re.match(r"^(FL|FR|BL|BR)\s+", block)
+    # Must start with motor ID (allow leading whitespace)
+    id_match = re.match(r"^\s*(FL|FR|BL|BR)\s+", block)
     if not id_match:
         return None
 
@@ -81,7 +82,7 @@ def parse_motor_debug_block(block: str) -> Optional[MotorState]:
 
     # Parse key:value pairs
     rpm_match = re.search(r"RPM:([\d.-]+)", block)
-    filt_match = re.search(r"F:([\d.-]+)", block)
+    filt_match = re.search(r"\sF:([\d.-]+)", block)  # Space before F: to avoid matching Dir:FWD
     pwm_match = re.search(r"PWM:([\d.-]+)", block)
     out_match = re.search(r"Out:([\d.-]+)", block)
     dir_match = re.search(r"Dir:(FWD|REV|STP)", block)

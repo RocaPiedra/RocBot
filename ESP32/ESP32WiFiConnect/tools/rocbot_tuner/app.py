@@ -26,7 +26,7 @@ from nicegui import ui, app
 import numpy as np
 
 from rocbot_tuner.transport.serial import SerialTransport
-from rocbot_tuner.transport.base import ControllerState, MotorState
+from rocbot_tuner.models import ControllerState, MotorState
 from rocbot_tuner.parser import parse_debug_line
 from rocbot_tuner.logger import DataLogger
 from rocbot_tuner.metrics import StepResponseMetrics, calculate_step_response
@@ -308,7 +308,7 @@ def update_motor_cards():
 
 async def serial_reader():
     """Background task that reads from serial and updates UI."""
-    async def on_state(new_state: ControllerState):
+    def on_state(new_state: ControllerState):
         state.latest_state = new_state
 
         # Update buffers

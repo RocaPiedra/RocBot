@@ -1,13 +1,15 @@
 """Serial transport for ESP32 debug firmware."""
 
 import asyncio
+import inspect
 import time
-from typing import Callable, Optional
+from typing import Awaitable, Callable, Optional
 
 import serial
 
-from .base import Transport, MotorState, ControllerState
-from rocbot_tuner.parser import parse_debug_line, parse_motor_state_block
+from rocbot_tuner.models import MotorState, ControllerState
+from .base import Transport
+from ..parser import parse_debug_line, parse_motor_state_block
 
 
 class SerialTransport(Transport):
@@ -56,9 +58,11 @@ class SerialTransport(Transport):
             self._serial.write((cmd + "\n").encode())
             await asyncio.sleep(0.01)  # Small delay for ESP32 to process
 
-    async def read_loop(self, callback: Callable[[ControllerState], None]):
+    async def read_loop(self, callback: Callable[[ControllerState], None | Awaitable[None]]):
         """Read serial data and parse into ControllerState objects."""
         buffer = ""
+        lines_parsed = 0
+        lines_matched = 0
 
         while self._running:
             try:
@@ -74,9 +78,13 @@ class SerialTransport(Transport):
                         if not line:
                             continue
 
+                        lines_parsed += 1
                         state = self._parse_line(line)
                         if state:
-                            callback(state)
+                            lines_matched += 1
+                            result = callback(state)
+                            if inspect.isawaitable(result):
+                                await result
 
                 await asyncio.sleep(0.005)  # 5ms poll interval
             except serial.SerialException as e:
@@ -85,6 +93,8 @@ class SerialTransport(Transport):
             except Exception as e:
                 print(f"Read error: {e}")
                 break
+
+        print(f"Serial reader stopped. Parsed: {lines_parsed}, Matched: {lines_matched}")
 
     def _parse_line(self, line: str) -> Optional[ControllerState]:
         """Parse a single line from serial output."""

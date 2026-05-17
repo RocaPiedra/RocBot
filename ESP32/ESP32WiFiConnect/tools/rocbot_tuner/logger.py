@@ -5,7 +5,7 @@ import os
 from datetime import datetime
 from typing import Optional
 
-from .transport.base import ControllerState
+from rocbot_tuner.models import ControllerState
 
 
 class DataLogger:
