@@ -12,26 +12,43 @@ kp(_kp), ki(_ki), kd(_kd){
 }
 
 float PIDClass::CalculateOutput(float rpm, float target_rpm, float deltaTs){
-    // error: positive when we need to go faster, negative when we need to slow down
-    e = target_rpm - rpm; // FIXED: was "rpm - target_rpm" which inverted direction
+    // error: positive when we need to go faster
+    e = target_rpm - rpm;
+    
     // derivative
-    dedt = (e-e_prev)/(deltaTs);
+    dedt = (e - e_prev) / deltaTs;
+    
     // integral
-    eint = eint + e*deltaTs;
+    eint = eint + e * deltaTs;
+    
     // store previous error
     e_prev = e;
-    // control signal
-    return kp*e + kd*dedt + ki*eint;
+    
+    // control signal (raw)
+    float output = kp * e + kd * dedt + ki * eint;
+    
+    return output;
+}
+
+float PIDClass::ScaleOutput(float output){
+    // Scale the PID output to PWM range
+    // If output is 30 (error for Kp=1), we want PWM around 100-150
+    // So scale = 5 means 30 * 5 = 150 PWM
+    return output * output_scale;
 }
 
 float PIDClass::FilterOutput(float output){    
+    // Apply output scaling first
+    float scaled = ScaleOutput(output);
+    
     // motor power
-    pwr = fabs(output);
-    if( pwr > 255 ){
-      pwr = 255;
+    pwr = fabs(scaled);
+    if(pwr > 255){
+        pwr = 255;
     }
 
-    pwr_filt = filter_1*pwr_filt + filter_2*pwr + filter_3*pwr_prev;
+    // IIR low-pass filter
+    pwr_filt = filter_1 * pwr_filt + filter_2 * pwr + filter_3 * pwr_prev;
 
     pwr_prev = pwr;
     
