@@ -9,5 +9,6 @@ Future:  Ros2Transport (micro-ROS agent over DDS)
 from rocbot_tuner.models import MotorState
 from .base import Transport
 from .serial import SerialTransport
+from .ros2 import Ros2Transport
 
-__all__ = ['Transport', 'MotorState', 'SerialTransport']
+__all__ = ['Transport', 'MotorState', 'SerialTransport', 'Ros2Transport']

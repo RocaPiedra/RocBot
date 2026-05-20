@@ -10,12 +10,11 @@
  *     - /rocbot/command (std_msgs/String)
  *
  *   Publishers:
- *     - /rocbot/motor_fl/state (std_msgs/Float64MultiArray)
- *       [target, rpm, rpm_filt, pwr_filt]
- *     - /rocbot/motor_fr/state (std_msgs/Float64MultiArray)
- *       [target, rpm, rpm_filt, pwr_filt]
+ *     - /rocbot/motor_fl/rpm (std_msgs/Float64)
+ *     - /rocbot/motor_fl/pwm (std_msgs/Float64)
+ *     - /rocbot/motor_fr/rpm (std_msgs/Float64)
+ *     - /rocbot/motor_fr/pwm (std_msgs/Float64)
  *     - /rocbot/debug (std_msgs/String)
- *       Same format as serial debug output
  *
  * Serial fallback: same commands as main_debug.cpp
  *
@@ -36,7 +35,6 @@
 #include <rclc/rclc.h>
 #include <rclc/executor.h>
 #include <std_msgs/msg/float64.h>
-#include <std_msgs/msg/float64_multi_array.h>
 #include <std_msgs/msg/string.h>
 
 // ============== Motor Configuration ==============
@@ -91,22 +89,24 @@ rcl_subscription_t sub_fl_target;
 rcl_subscription_t sub_fr_target;
 rcl_subscription_t sub_command;
 
-// Publishers
-rcl_publisher_t pub_fl_state;
-rcl_publisher_t pub_fr_state;
+// Publishers (using simple Float64 instead of Float64MultiArray for ESP32 reliability)
+rcl_publisher_t pub_fl_rpm;
+rcl_publisher_t pub_fl_pwm;
+rcl_publisher_t pub_fr_rpm;
+rcl_publisher_t pub_fr_pwm;
 rcl_publisher_t pub_debug;
 
 // Messages
-std_msgs__msg__Float64MultiArray msg_fl_state;
-std_msgs__msg__Float64MultiArray msg_fr_state;
+std_msgs__msg__Float64 msg_fl_rpm;
+std_msgs__msg__Float64 msg_fl_pwm;
+std_msgs__msg__Float64 msg_fr_rpm;
+std_msgs__msg__Float64 msg_fr_pwm;
 std_msgs__msg__String msg_command;
 std_msgs__msg__String msg_debug;
 std_msgs__msg__Float64 msg_fl_target;
 std_msgs__msg__Float64 msg_fr_target;
 
 // State buffers
-double fl_state_data[4];
-double fr_state_data[4];
 char debug_buffer[512];
 char command_buffer[256];
 
@@ -323,15 +323,25 @@ void printDebugInfo() {
 // ============== micro-ROS Setup (Official API) ==============
 void setup_micro_ros() {
     // Set up serial transport (official method)
-    Serial.begin(115200);
     set_microros_serial_transports(Serial);
 
     allocator = rcl_get_default_allocator();
-    rclc_support_init(&support, 0, NULL, &allocator);
-    rclc_node_init_default(&node, "rocbot_motor_controller", "", &support);
+    
+    // Initialize support with error checking
+    rcl_ret_t ret = rclc_support_init(&support, 0, NULL, &allocator);
+    if (ret != RCL_RET_OK) {
+        Serial.println("Failed to init micro-ROS support!");
+        return;
+    }
 
-    // 6 handles: 3 subs + 3 pubs
-    rclc_executor_init(&executor, &support.context, 6, &allocator);
+    ret = rclc_node_init_default(&node, "rocbot_motor_controller", "", &support);
+    if (ret != RCL_RET_OK) {
+        Serial.println("Failed to init micro-ROS node!");
+        return;
+    }
+
+    // 9 handles: 3 subs + 5 pubs + 1 timer
+    rclc_executor_init(&executor, &support.context, 9, &allocator);
 
     // --- Subscribers ---
     rclc_subscription_init_default(&sub_fl_target, &node,
@@ -345,22 +355,19 @@ void setup_micro_ros() {
     rclc_executor_add_subscription(&executor, &sub_fr_target, &msg_fr_target, &sub_fr_callback, ON_NEW_DATA);
     rclc_executor_add_subscription(&executor, &sub_command, &msg_command, &sub_command_callback, ON_NEW_DATA);
 
-    // --- Publishers ---
-    rclc_publisher_init_default(&pub_fl_state, &node,
-        ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Float64MultiArray), "rocbot/motor_fl/state");
-    rclc_publisher_init_default(&pub_fr_state, &node,
-        ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Float64MultiArray), "rocbot/motor_fr/state");
+    // --- Publishers (using simple Float64 for ESP32 reliability) ---
+    rclc_publisher_init_default(&pub_fl_rpm, &node,
+        ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Float64), "rocbot/motor_fl/rpm");
+    rclc_publisher_init_default(&pub_fl_pwm, &node,
+        ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Float64), "rocbot/motor_fl/pwm");
+    rclc_publisher_init_default(&pub_fr_rpm, &node,
+        ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Float64), "rocbot/motor_fr/rpm");
+    rclc_publisher_init_default(&pub_fr_pwm, &node,
+        ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Float64), "rocbot/motor_fr/pwm");
     rclc_publisher_init_default(&pub_debug, &node,
         ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, String), "rocbot/debug");
 
-    // Init state message buffers
-    msg_fl_state.data.data = fl_state_data;
-    msg_fl_state.data.size = 4;
-    msg_fl_state.data.capacity = 4;
-    msg_fr_state.data.data = fr_state_data;
-    msg_fr_state.data.size = 4;
-    msg_fr_state.data.capacity = 4;
-
+    // Init string message buffers
     msg_command.data.data = command_buffer;
     msg_command.data.size = 0;
     msg_command.data.capacity = sizeof(command_buffer);
@@ -369,28 +376,25 @@ void setup_micro_ros() {
     msg_debug.data.size = 0;
     msg_debug.data.capacity = sizeof(debug_buffer);
 
-    Serial.println("micro-ROS initialized!");
+    Serial.println("micro-ROS initialized successfully!");
 }
 
 void publish_motor_states() {
-    // FL state: [target, rpm, rpm_filt, pwr_filt]
-    int fl_target = ros_targets_active ? (int)ros_target_fl : target_value;
-    fl_state_data[0] = fl_target;
-    fl_state_data[1] = MotorFL.CurrentRPM;
-    fl_state_data[2] = MotorFL.FilteredRPM;
-    fl_state_data[3] = MotorFL.PID.pwr_filt;
-    msg_fl_state.data.size = 4;
+    // FL RPM
+    msg_fl_rpm.data = MotorFL.CurrentRPM;
+    rcl_publish(&pub_fl_rpm, &msg_fl_rpm, NULL);
 
-    // FR state: [target, rpm, rpm_filt, pwr_filt]
-    int fr_target = ros_targets_active ? (int)ros_target_fr : target_value;
-    fr_state_data[0] = fr_target;
-    fr_state_data[1] = MotorFR.CurrentRPM;
-    fr_state_data[2] = MotorFR.FilteredRPM;
-    fr_state_data[3] = MotorFR.PID.pwr_filt;
-    msg_fr_state.data.size = 4;
+    // FL PWM
+    msg_fl_pwm.data = MotorFL.PID.pwr_filt;
+    rcl_publish(&pub_fl_pwm, &msg_fl_pwm, NULL);
 
-    rcl_publish(&pub_fl_state, &msg_fl_state, NULL);
-    rcl_publish(&pub_fr_state, &msg_fr_state, NULL);
+    // FR RPM
+    msg_fr_rpm.data = MotorFR.CurrentRPM;
+    rcl_publish(&pub_fr_rpm, &msg_fr_rpm, NULL);
+
+    // FR PWM
+    msg_fr_pwm.data = MotorFR.PID.pwr_filt;
+    rcl_publish(&pub_fr_pwm, &msg_fr_pwm, NULL);
 }
 
 void publish_debug_string() {

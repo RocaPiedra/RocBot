@@ -15,6 +15,8 @@ import asyncio
 import sys
 import os
 import time
+import subprocess
+import signal
 from collections import deque
 from datetime import datetime
 from typing import Optional
@@ -26,6 +28,7 @@ from nicegui import ui, app
 import numpy as np
 
 from rocbot_tuner.transport.serial import SerialTransport
+from rocbot_tuner.transport.ros2 import Ros2Transport
 from rocbot_tuner.models import ControllerState, MotorState
 from rocbot_tuner.parser import parse_debug_line
 from rocbot_tuner.logger import DataLogger
@@ -114,6 +117,11 @@ class AppState:
         self.latest_state: Optional[ControllerState] = None
         self.start_time = 0.0
 
+        # Agent management
+        self.agent_process: Optional[subprocess.Popen] = None
+        self.agent_running = False
+        self.serial_port = "/dev/ttyUSB0"
+
     def get_buffer(self, motor_id: str) -> MotorBuffer:
         if motor_id not in self.buffers:
             self.buffers[motor_id] = MotorBuffer()
@@ -195,6 +203,7 @@ error_chart: Optional[ui.echart] = None
 status_label: Optional[ui.label] = None
 mode_label: Optional[ui.label] = None
 log_label: Optional[ui.label] = None
+agent_status: Optional[ui.label] = None
 
 # PID sliders
 kp_slider: Optional[ui.number] = None
@@ -339,27 +348,80 @@ async def serial_reader():
 # ─── UI Event Handlers ───────────────────────────────────────────────────
 
 
-async def connect_serial():
-    """Connect to ESP32."""
-    port = port_input.value or "/dev/ttyUSB0"
-    baud = int(baud_input.value or 115200)
-
-    state.transport = SerialTransport(port=port, baud=baud)
-    success = await state.transport.connect()
-
-    if success:
-        state.connected = True
-        state.start_time = time.time()
-        status_label.set_text("● Connected")
-        status_label.style("color: green")
-        ui.notify(f"Connected to {port}")
-
-        # Start background reader
-        asyncio.create_task(serial_reader())
+async def connect_serial(transport: str = "serial"):
+    """Connect to ESP32 via Serial or ROS2."""
+    if transport == "ros2":
+        state.transport = Ros2Transport()
+        success = await state.transport.connect()
+        if success:
+            state.connected = True
+            state.start_time = time.time()
+            status_label.set_text("● ROS2")
+            status_label.style("color: cyan")
+            ui.notify("Connected via ROS2")
+            asyncio.create_task(serial_reader())
+        else:
+            status_label.set_text("● ROS2 Failed")
+            status_label.style("color: red")
+            ui.notify("ROS2 connection failed. Is micro-ROS agent running?", type="negative")
     else:
-        status_label.set_text("● Failed")
-        status_label.style("color: red")
-        ui.notify("Connection failed", type="negative")
+        port = port_input.value or "/dev/ttyUSB0"
+        baud = int(baud_input.value or 115200)
+        state.serial_port = port
+        state.transport = SerialTransport(port=port, baud=baud)
+        success = await state.transport.connect()
+        if success:
+            state.connected = True
+            state.start_time = time.time()
+            status_label.set_text("● Connected")
+            status_label.style("color: green")
+            ui.notify(f"Connected to {port}")
+            asyncio.create_task(serial_reader())
+        else:
+            status_label.set_text("● Failed")
+            status_label.style("color: red")
+            ui.notify("Connection failed", type="negative")
+
+
+async def launch_agent():
+    """Launch micro-ROS agent via Docker."""
+    if state.agent_running:
+        ui.notify("Agent already running", type="warning")
+        return
+
+    port = state.serial_port
+    cmd = [
+        "docker", "run", "-d", "--rm",
+        "-v", "/dev:/dev",
+        "--privileged", "--net=host",
+        "--name", "rocbot_microros_agent",
+        "microros/micro-ros-agent:humble",
+        "serial", "--dev", port, "-v6"
+    ]
+
+    try:
+        state.agent_process = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        state.agent_running = True
+        agent_status.set_text("Agent: ● Running").style("color: cyan")
+        ui.notify(f"micro-ROS agent launched on {port}")
+    except Exception as e:
+        ui.notify(f"Failed to launch agent: {e}", type="negative")
+
+
+async def stop_agent():
+    """Stop the micro-ROS agent."""
+    if not state.agent_running:
+        ui.notify("Agent not running", type="warning")
+        return
+
+    try:
+        subprocess.run(["docker", "stop", "rocbot_microros_agent"], check=True)
+        state.agent_running = False
+        state.agent_process = None
+        agent_status.set_text("Agent: ● Stopped").style("color: gray")
+        ui.notify("micro-ROS agent stopped")
+    except subprocess.CalledProcessError as e:
+        ui.notify(f"Failed to stop agent: {e}", type="negative")
 
 
 async def disconnect_serial():
@@ -521,11 +583,21 @@ with ui.left_drawer(fixed=True).props("bordered").classes("bg-gray-900 w-64") as
     with ui.scroll_area().classes("fit p-3"):
         # Connection
         ui.label("Connection").classes("text-xs font-bold text-gray-400 mb-1 uppercase tracking-wide")
+        transport_type = ui.toggle({"serial": "Serial", "ros2": "ROS2"}, value="serial").props("dense color=primary")
         port_input = ui.input(value="/dev/ttyUSB0").classes("w-full").props("dense outlined dark label=Port color=primary")
         baud_input = ui.input(value="115200").classes("w-full mt-1").props("dense outlined dark label=Baud color=primary")
         with ui.row().classes("gap-1 mt-1 w-full"):
-            ui.button("Connect", on_click=connect_serial).props("dense color=green size=sm").classes("flex-1")
+            ui.button("Connect", on_click=lambda: connect_serial(transport_type.value)).props("dense color=green size=sm").classes("flex-1")
             ui.button("Disconnect", on_click=disconnect_serial).props("dense color=red size=sm").classes("flex-1")
+
+        ui.separator().classes("my-2 bg-gray-700")
+
+        # micro-ROS Agent
+        ui.label("micro-ROS Agent").classes("text-xs font-bold text-gray-400 mb-1 uppercase tracking-wide")
+        agent_status = ui.label("Agent: ● Stopped").classes("text-xs text-gray-400")
+        with ui.row().classes("gap-1 w-full"):
+            ui.button("▶ Launch", on_click=launch_agent).props("dense color=cyan size=sm").classes("flex-1")
+            ui.button("⏹ Stop", on_click=stop_agent).props("dense color=red size=sm").classes("flex-1")
 
         ui.separator().classes("my-2 bg-gray-700")
 
