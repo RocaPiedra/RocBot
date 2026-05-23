@@ -11,6 +11,7 @@ cd ESP32/ESP32WiFiConnect
 pio run -t upload          # Build and flash (uses main.cpp)
 pio run -e debug -t upload # Build and flash debug version
 pio device monitor         # Serial monitor (115200 baud)
+pio run -e hello_microros -t upload  # Build & flash micro-ROS hello world test
 ```
 
 ## Key Files
@@ -21,6 +22,8 @@ pio device monitor         # Serial monitor (115200 baud)
 - `ESP32/ESP32WiFiConnect/include/MotorController.hpp` — Motor class
 - `ESP32/ESP32WiFiConnect/include/PIDClass.hpp` — PID controller
 - `ESP32/ESP32WiFiConnect/include/ssid.hpp` — WiFi credentials (gitignored)
+- `ESP32/ESP32WiFiConnect/src/main_microros.cpp` — Full micro-ROS motor controller
+- `ESP32/ESP32WiFiConnect/src/hello_microros.cpp` — Minimal micro-ROS hello world test
 
 ## Motor Pin Assignments (ESP32)
 

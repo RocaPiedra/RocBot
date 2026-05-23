@@ -5,10 +5,11 @@ RocBot PID Tuner - Integrated Motor Control Dashboard
 Real-time visualization, PID tuning, and step-response analysis
 for the RocBot ESP32 motor controller.
 
+Supports Serial (USB) and ROS2 (WiFi/UDP micro-ROS) transports.
+
 Usage:
-    python app.py                     # Default: /dev/ttyUSB0
-    python app.py --port /dev/ttyACM0
-    python app.py --port /dev/ttyUSB0 --baud 115200
+    python app.py                     # Default web UI on :8080
+    python app.py --port /dev/ttyUSB0  # Default serial device
 """
 
 import asyncio
@@ -40,10 +41,10 @@ MAX_PLOT_POINTS = 500
 PLOT_UPDATE_MS = 50
 
 MOTOR_COLORS = {
-    "FL": {"target": "#60a5fa", "rpm": "#1f77b4", "rpm_filt": "#1565c0", "pwr": "#1f77b4"},
-    "FR": {"target": "#f87171", "rpm": "#d62728", "rpm_filt": "#b71c1c", "pwr": "#d62728"},
-    "BL": {"target": "#4ade80", "rpm": "#2ca02c", "rpm_filt": "#1b5e20", "pwr": "#2ca02c"},
-    "BR": {"target": "#fb923c", "rpm": "#ff7f0e", "rpm_filt": "#e65100", "pwr": "#ff7f0e"},
+    "FL": {"target": "#00f0ff", "rpm": "#00f0ff", "rpm_filt": "#00f0ff", "pwr": "#00f0ff"},
+    "FR": {"target": "#ff00ff", "rpm": "#ff00ff", "rpm_filt": "#ff00ff", "pwr": "#ff00ff"},
+    "BL": {"target": "#39ff14", "rpm": "#39ff14", "rpm_filt": "#39ff14", "pwr": "#39ff14"},
+    "BR": {"target": "#ff9f1c", "rpm": "#ff9f1c", "rpm_filt": "#ff9f1c", "pwr": "#ff9f1c"},
 }
 
 # ─── Data Buffers ────────────────────────────────────────────────────────
@@ -133,33 +134,56 @@ state = AppState()
 # ─── ECharts Configuration ──────────────────────────────────────────────
 
 
-def build_rpm_chart() -> dict:
+def _chart_theme() -> dict:
+    """Common dark/neon theme for ECharts."""
     return {
-        "tooltip": {"trigger": "axis"},
-        "legend": {"data": [], "top": 5},
+        "backgroundColor": "transparent",
+        "textStyle": {"fontFamily": "monospace", "color": "#e0e0e0"},
+        "tooltip": {
+            "trigger": "axis",
+            "backgroundColor": "#0f0f14",
+            "borderColor": "#1a1a2e",
+            "textStyle": {"color": "#e0e0e0"},
+        },
+        "legend": {"data": [], "top": 5, "textStyle": {"color": "#8888a0"}},
+    }
+
+
+def build_rpm_chart() -> dict:
+    theme = _chart_theme()
+    theme.update({
         "grid": {"left": 50, "right": 20, "top": 35, "bottom": 30},
         "xAxis": {
             "type": "category",
             "name": "Time (s)",
+            "nameTextStyle": {"color": "#8888a0"},
+            "axisLine": {"lineStyle": {"color": "#1a1a2e"}},
+            "axisLabel": {"color": "#8888a0"},
             "splitLine": {"show": False},
         },
         "yAxis": {
             "type": "value",
             "name": "RPM",
-            "splitLine": {"lineStyle": {"type": "dashed"}},
+            "nameTextStyle": {"color": "#8888a0"},
+            "axisLine": {"lineStyle": {"color": "#1a1a2e"}},
+            "axisLabel": {"color": "#8888a0"},
+            "splitLine": {"lineStyle": {"type": "dashed", "color": "#1a1a2e"}},
         },
         "series": [],
-    }
+    })
+    return theme
 
 
 def build_pwr_chart() -> dict:
-    return {
-        "tooltip": {"trigger": "axis"},
-        "legend": {"data": [], "top": 5},
+    theme = _chart_theme()
+    theme.update({
         "grid": {"left": 50, "right": 20, "top": 35, "bottom": 30},
         "xAxis": {
             "type": "category",
             "name": "Time (s)",
+            "nameTextStyle": {"color": "#8888a0"},
+            "axisLine": {"lineStyle": {"color": "#1a1a2e"}},
+            "axisLabel": {"color": "#8888a0"},
             "splitLine": {"show": False},
         },
         "yAxis": {
@@ -167,30 +191,63 @@ def build_pwr_chart() -> dict:
             "name": "PWM",
             "min": 0,
             "max": 280,
-            "splitLine": {"lineStyle": {"type": "dashed"}},
+            "nameTextStyle": {"color": "#8888a0"},
+            "axisLine": {"lineStyle": {"color": "#1a1a2e"}},
+            "axisLabel": {"color": "#8888a0"},
+            "splitLine": {"lineStyle": {"type": "dashed", "color": "#1a1a2e"}},
         },
         "series": [],
-    }
+    })
+    return theme
 
 
 def build_error_chart() -> dict:
-    return {
-        "tooltip": {"trigger": "axis"},
-        "legend": {"data": [], "top": 5},
+    theme = _chart_theme()
+    theme.update({
         "grid": {"left": 50, "right": 20, "top": 35, "bottom": 30},
         "xAxis": {
             "type": "category",
             "name": "Time (s)",
+            "nameTextStyle": {"color": "#8888a0"},
+            "axisLine": {"lineStyle": {"color": "#1a1a2e"}},
+            "axisLabel": {"color": "#8888a0"},
             "splitLine": {"show": False},
         },
         "yAxis": {
             "type": "value",
             "name": "Error (RPM)",
-            "splitLine": {"lineStyle": {"type": "dashed"}},
+            "nameTextStyle": {"color": "#8888a0"},
+            "axisLine": {"lineStyle": {"color": "#1a1a2e"}},
+            "axisLabel": {"color": "#8888a0"},
+            "splitLine": {"lineStyle": {"type": "dashed", "color": "#1a1a2e"}},
         },
         "series": [],
-    }
+    })
+    return theme
 
+
+# ─── Cyberpunk Theme ─────────────────────────────────────────────────────
+
+ui.add_css("""
+/* Global cyberpunk theme overrides */
+body { background-color: #050508 !important; font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace !important; }
+.q-dark { background-color: #0f0f14 !important; }
+.q-drawer { background-color: #0f0f14 !important; border-right: 1px solid #1a1a2e !important; }
+.q-header { background-color: #0f0f14 !important; border-bottom: 1px solid #1a1a2e !important; box-shadow: 0 0 15px rgba(0, 240, 255, 0.08) !important; }
+.q-card { background-color: #0f0f14 !important; border: 1px solid #1a1a2e !important; }
+.q-field__native { color: #e0e0e0 !important; }
+.q-field__label { color: #8888a0 !important; }
+.q-field--outlined .q-field__control { border-color: #1a1a2e !important; }
+.q-field--outlined.q-field--focused .q-field__control { border-color: #00f0ff !important; box-shadow: 0 0 6px rgba(0, 240, 255, 0.25) !important; }
+.q-separator { background-color: #1a1a2e !important; }
+.q-btn { text-transform: uppercase; letter-spacing: 0.08em; font-family: monospace; font-weight: 600; }
+.q-menu { background-color: #0f0f14 !important; border: 1px solid #1a1a2e !important; }
+/* Scrollbar */
+::-webkit-scrollbar { width: 5px; }
+::-webkit-scrollbar-track { background: #050508; }
+::-webkit-scrollbar-thumb { background: #1a1a2e; border-radius: 2px; }
+::-webkit-scrollbar-thumb:hover { background: #00f0ff; }
+""")
 
 # ─── UI Components ───────────────────────────────────────────────────────
 
@@ -349,16 +406,22 @@ async def serial_reader():
 
 
 async def connect_serial(transport: str = "serial"):
-    """Connect to ESP32 via Serial or ROS2."""
+    """Connect to ESP32 via Serial or ROS2 (WiFi/UDP)."""
     if transport == "ros2":
+        # Auto-launch agent if not already running
+        if not _is_agent_running():
+            ui.notify("Auto-launching micro-ROS agent...", type="info")
+            await launch_agent()
+            await asyncio.sleep(1.5)  # Give agent time to start
+
         state.transport = Ros2Transport()
         success = await state.transport.connect()
         if success:
             state.connected = True
             state.start_time = time.time()
-            status_label.set_text("● ROS2")
+            status_label.set_text("● ROS2 (WiFi)")
             status_label.style("color: cyan")
-            ui.notify("Connected via ROS2")
+            ui.notify("Connected via ROS2 (WiFi/UDP)")
             asyncio.create_task(serial_reader())
         else:
             status_label.set_text("● ROS2 Failed")
@@ -383,44 +446,56 @@ async def connect_serial(transport: str = "serial"):
             ui.notify("Connection failed", type="negative")
 
 
+def _is_agent_running() -> bool:
+    """Check if the micro-ROS agent Docker container is already running."""
+    try:
+        result = subprocess.run(
+            ["docker", "ps", "--filter", "name=rocbot_microros_agent", "--format", "{{.Names}}"],
+            capture_output=True, text=True, check=False,
+        )
+        return "rocbot_microros_agent" in result.stdout
+    except Exception:
+        return False
+
+
 async def launch_agent():
-    """Launch micro-ROS agent via Docker."""
-    if state.agent_running:
-        ui.notify("Agent already running", type="warning")
+    """Launch micro-ROS agent via Docker (UDP/WiFi mode)."""
+    if _is_agent_running():
+        state.agent_running = True
+        agent_status.set_text("Agent: ● Running").style("color: cyan")
+        ui.notify("Agent already running (detected)", type="warning")
         return
 
-    port = state.serial_port
     cmd = [
         "docker", "run", "-d", "--rm",
-        "-v", "/dev:/dev",
-        "--privileged", "--net=host",
+        "--net=host",
         "--name", "rocbot_microros_agent",
         "microros/micro-ros-agent:humble",
-        "serial", "--dev", port, "-v6"
+        "udp4", "--port", "8888", "-v6",
     ]
 
     try:
         state.agent_process = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         state.agent_running = True
-        agent_status.set_text("Agent: ● Running").style("color: cyan")
-        ui.notify(f"micro-ROS agent launched on {port}")
+        agent_status.set_text("Agent: ● Running (UDP 8888)").style("color: cyan")
+        ui.notify("micro-ROS agent launched (UDP 8888)")
     except Exception as e:
         ui.notify(f"Failed to launch agent: {e}", type="negative")
 
 
 async def stop_agent():
     """Stop the micro-ROS agent."""
-    if not state.agent_running:
+    if not state.agent_running and not _is_agent_running():
         ui.notify("Agent not running", type="warning")
         return
 
     try:
-        subprocess.run(["docker", "stop", "rocbot_microros_agent"], check=True)
+        subprocess.run(["docker", "stop", "rocbot_microros_agent"], check=False, capture_output=True)
         state.agent_running = False
         state.agent_process = None
         agent_status.set_text("Agent: ● Stopped").style("color: gray")
         ui.notify("micro-ROS agent stopped")
-    except subprocess.CalledProcessError as e:
+    except Exception as e:
         ui.notify(f"Failed to stop agent: {e}", type="negative")
 
 
@@ -583,17 +658,17 @@ with ui.left_drawer(fixed=True).props("bordered").classes("bg-gray-900 w-64") as
     with ui.scroll_area().classes("fit p-3"):
         # Connection
         ui.label("Connection").classes("text-xs font-bold text-gray-400 mb-1 uppercase tracking-wide")
-        transport_type = ui.toggle({"serial": "Serial", "ros2": "ROS2"}, value="serial").props("dense color=primary")
-        port_input = ui.input(value="/dev/ttyUSB0").classes("w-full").props("dense outlined dark label=Port color=primary")
-        baud_input = ui.input(value="115200").classes("w-full mt-1").props("dense outlined dark label=Baud color=primary")
+        transport_type = ui.toggle({"serial": "Serial (USB)", "ros2": "ROS2 (WiFi)"}, value="ros2").props("dense color=primary")
+        port_input = ui.input(value="/dev/ttyUSB0").classes("w-full").props("dense outlined dark label='Serial Port' color=primary")
+        baud_input = ui.input(value="115200").classes("w-full mt-1").props("dense outlined dark label='Serial Baud' color=primary")
         with ui.row().classes("gap-1 mt-1 w-full"):
             ui.button("Connect", on_click=lambda: connect_serial(transport_type.value)).props("dense color=green size=sm").classes("flex-1")
             ui.button("Disconnect", on_click=disconnect_serial).props("dense color=red size=sm").classes("flex-1")
 
         ui.separator().classes("my-2 bg-gray-700")
 
-        # micro-ROS Agent
-        ui.label("micro-ROS Agent").classes("text-xs font-bold text-gray-400 mb-1 uppercase tracking-wide")
+        # micro-ROS Agent (WiFi/UDP)
+        ui.label("micro-ROS Agent (WiFi/UDP)").classes("text-xs font-bold text-gray-400 mb-1 uppercase tracking-wide")
         agent_status = ui.label("Agent: ● Stopped").classes("text-xs text-gray-400")
         with ui.row().classes("gap-1 w-full"):
             ui.button("▶ Launch", on_click=launch_agent).props("dense color=cyan size=sm").classes("flex-1")
@@ -678,7 +753,14 @@ with ui.column().classes("w-full flex-1 p-3 gap-3"):
 
 ui.timer(PLOT_UPDATE_MS / 1000, auto_update)
 
-# ─── Launch ──────────────────────────────────────────────────────────────
+# ─── Startup Check ───────────────────────────────────────────────────────
+
+# Check if agent is already running on startup
+if _is_agent_running():
+    state.agent_running = True
+    agent_status.set_text("Agent: ● Running (UDP 8888)").style("color: cyan")
+
+# ─── Launch ─────────────────────────────────────────────────────────────-
 
 
 def main():

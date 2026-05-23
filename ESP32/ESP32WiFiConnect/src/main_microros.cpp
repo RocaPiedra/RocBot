@@ -1,7 +1,7 @@
 /*
- * RocBot ESP32 Motor Controller with micro-ROS
+ * RocBot ESP32 Motor Controller with micro-ROS (WiFi transport)
  *
- * Official micro_ros_platformio integration.
+ * Official micro_ros_platformio integration over WiFi/UDP.
  *
  * ROS 2 Topics:
  *   Subscribers:
@@ -16,18 +16,23 @@
  *     - /rocbot/motor_fr/pwm (std_msgs/Float64)
  *     - /rocbot/debug (std_msgs/String)
  *
- * Serial fallback: same commands as main_debug.cpp
+ * Serial fallback: same commands as main_debug.cpp (local debug)
  *
  * Build:
- *   pio lib install                  # First time only
- *   pio run -e microros              # Build
- *   pio run -e microros -t upload    # Flash
+ *   pio run -e microros -t upload    # Build and flash
  *   pio run -e microros --target clean_microros  # Force rebuild
+ *
+ * Agent (on host PC):
+ *   docker run -it --rm --net=host microros/micro-ros-agent:humble udp4 --port 8888 -v6
+ *
+ * WiFi transport uses board_microros_transport = wifi in platformio.ini.
+ * Update AGENT_IP in include/ssid.hpp to match your host PC's IP.
  */
 
 #include <Arduino.h>
 #include "MotorController.hpp"
 #include "PIDClass.hpp"
+#include "ssid.hpp"
 
 // micro-ROS includes (provided by micro_ros_platformio)
 #include <micro_ros_platformio.h>
@@ -42,6 +47,8 @@
 #define MAXRPM 330
 #define REFRESHRATE 5 // ms
 #define NUMMOTORS 2   // FL, FR
+
+#define AGENT_WAIT_MS 3000
 
 // Pin assignments (ESP32) — same as main_debug.cpp
 MotorController MotorFL("FL", 32, 35, 34, 33, 25, 1.0, 0.0, 0.0);
@@ -66,6 +73,9 @@ unsigned long debugPrintInterval = 100;
 
 volatile unsigned long encFR_interrupts = 0;
 volatile unsigned long encFL_interrupts = 0;
+
+bool microros_connected = false;
+unsigned long last_agent_check = 0;
 
 // ============== ISR Handlers ==============
 void IRAM_ATTR ISRReadEncoderFR() {
@@ -322,21 +332,28 @@ void printDebugInfo() {
 
 // ============== micro-ROS Setup (Official API) ==============
 void setup_micro_ros() {
-    // Set up serial transport (official method)
-    set_microros_serial_transports(Serial);
+    // Set up WiFi transport (board_microros_transport = wifi in platformio.ini)
+    set_microros_wifi_transports((char*)WIFI_SSID_1, (char*)WIFI_PASSWORD, AGENT_IP_ADDRESS, AGENT_PORT);
 
     allocator = rcl_get_default_allocator();
-    
+
+    // Wait briefly for agent to be ready
+    Serial.println("[ROS] Waiting for agent...");
+    delay(AGENT_WAIT_MS);
+
     // Initialize support with error checking
     rcl_ret_t ret = rclc_support_init(&support, 0, NULL, &allocator);
     if (ret != RCL_RET_OK) {
         Serial.println("Failed to init micro-ROS support!");
+        microros_connected = false;
         return;
     }
 
     ret = rclc_node_init_default(&node, "rocbot_motor_controller", "", &support);
     if (ret != RCL_RET_OK) {
         Serial.println("Failed to init micro-ROS node!");
+        rclc_support_fini(&support);
+        microros_connected = false;
         return;
     }
 
@@ -376,25 +393,26 @@ void setup_micro_ros() {
     msg_debug.data.size = 0;
     msg_debug.data.capacity = sizeof(debug_buffer);
 
+    microros_connected = true;
     Serial.println("micro-ROS initialized successfully!");
 }
 
 void publish_motor_states() {
     // FL RPM
     msg_fl_rpm.data = MotorFL.CurrentRPM;
-    rcl_publish(&pub_fl_rpm, &msg_fl_rpm, NULL);
+    (void)rcl_publish(&pub_fl_rpm, &msg_fl_rpm, NULL);
 
     // FL PWM
     msg_fl_pwm.data = MotorFL.PID.pwr_filt;
-    rcl_publish(&pub_fl_pwm, &msg_fl_pwm, NULL);
+    (void)rcl_publish(&pub_fl_pwm, &msg_fl_pwm, NULL);
 
     // FR RPM
     msg_fr_rpm.data = MotorFR.CurrentRPM;
-    rcl_publish(&pub_fr_rpm, &msg_fr_rpm, NULL);
+    (void)rcl_publish(&pub_fr_rpm, &msg_fr_rpm, NULL);
 
     // FR PWM
     msg_fr_pwm.data = MotorFR.PID.pwr_filt;
-    rcl_publish(&pub_fr_pwm, &msg_fr_pwm, NULL);
+    (void)rcl_publish(&pub_fr_pwm, &msg_fr_pwm, NULL);
 }
 
 void publish_debug_string() {
@@ -433,7 +451,7 @@ void publish_debug_string() {
     }
 
     msg_debug.data.size = len;
-    rcl_publish(&pub_debug, &msg_debug, NULL);
+    (void)rcl_publish(&pub_debug, &msg_debug, NULL);
 }
 
 // ============== Main Setup ==============
@@ -452,6 +470,15 @@ void setup() {
 
     // Initialize micro-ROS (official API)
     setup_micro_ros();
+    if (!microros_connected) {
+        Serial.println("[ROS] micro-ROS init FAILED — will retry in loop");
+        Serial.println("[ROS] Make sure the agent is running:");
+        Serial.println("      docker run -it --rm --net=host microros/micro-ros-agent:humble udp4 --port 8888 -v6");
+        Serial.print("[ROS] Target agent: ");
+        Serial.print(AGENT_IP);
+        Serial.print(":");
+        Serial.println(AGENT_PORT);
+    }
 
     Serial.println("\n=== Commands ===");
     Serial.println("d<0-255>  - Direct forward");
@@ -475,8 +502,18 @@ void loop() {
     // Handle serial input (fallback control)
     readSerialInput();
 
-    // Process micro-ROS executor
-    rclc_executor_spin_some(&executor, RCL_MS_TO_NS(10));
+    // If not connected, try to reconnect every 3 seconds
+    if (!microros_connected) {
+        if (millis() - last_agent_check >= 3000) {
+            last_agent_check = millis();
+            Serial.println("[ROS] Retrying micro-ROS connection...");
+            setup_micro_ros();
+        }
+        // Skip ROS2 processing but keep running motor control
+    } else {
+        // Process micro-ROS executor
+        rclc_executor_spin_some(&executor, RCL_MS_TO_NS(10));
+    }
 
     // Step test mode - change target after delay
     if (step_test_mode && millis() - step_test_start > 5000) {
@@ -514,7 +551,7 @@ void loop() {
     printDebugInfo();
 
     // Publish ROS state at debug interval rate
-    if (millis() - lastDebugPrint < debugPrintInterval + 5) {
+    if (microros_connected && (millis() - lastDebugPrint < debugPrintInterval + 5)) {
         publish_motor_states();
         publish_debug_string();
     }
