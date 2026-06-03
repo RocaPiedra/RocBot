@@ -643,111 +643,124 @@ def auto_update():
 # Global state for drawer toggle
 sidebar_open = True
 
+# ─── Helper: neon button style ────────────────────────────────────────────
+
+def _btn(color: str, label: str, onclick, cls: str = ""):
+    """Create a cyberpunk neon outline button."""
+    return ui.button(label, on_click=onclick).props("dense flat size=sm").classes(
+        f"border border-[{color}] bg-[{color}]/10 text-[{color}] hover:bg-[{color}]/20 uppercase tracking-wider text-[10px] font-bold {cls}"
+    )
+
 # Header
-with ui.header().classes("items-center justify-between bg-gray-900 text-white px-4"):
+with ui.header().classes("items-center justify-between bg-[#0f0f14] text-[#e0e0e0] px-4 border-b border-[#1a1a2e]"):
     with ui.row().classes("items-center gap-3"):
-        ui.button("☰", on_click=lambda: drawer.toggle()).props("flat dense color=white size=sm")
-        ui.label("RocBot PID Tuner").classes("text-lg font-bold")
+        ui.button("≡", on_click=lambda: drawer.toggle()).props("flat dense size=sm").classes("text-[#00f0ff]")
+        ui.label("◈ ROCBOT PID TUNER").classes("text-lg font-bold tracking-[0.2em] text-[#00f0ff] drop-shadow-[0_0_8px_rgba(0,240,255,0.4)]")
     with ui.row().classes("items-center gap-4"):
-        status_label = ui.label("● Disconnected").classes("text-xs")
-        mode_label = ui.label("Mode: STOP").classes("text-xs")
-        log_label = ui.label("Logging: OFF").classes("text-xs text-gray-400")
+        status_label = ui.label("● DISCONNECTED").classes("text-[10px] font-mono tracking-wider")
+        mode_label = ui.label("MODE: STOP").classes("text-[10px] font-mono tracking-wider text-[#8888a0]")
+        log_label = ui.label("LOG: OFF").classes("text-[10px] font-mono tracking-wider text-[#8888a0]")
 
 # Left Drawer (collapsible side menu)
-with ui.left_drawer(fixed=True).props("bordered").classes("bg-gray-900 w-64") as drawer:
+with ui.left_drawer(fixed=True).props("bordered").classes("bg-[#0f0f14] w-64 border-r border-[#1a1a2e]") as drawer:
     with ui.scroll_area().classes("fit p-3"):
         # Connection
-        ui.label("Connection").classes("text-xs font-bold text-gray-400 mb-1 uppercase tracking-wide")
-        transport_type = ui.toggle({"serial": "Serial (USB)", "ros2": "ROS2 (WiFi)"}, value="ros2").props("dense color=primary")
-        port_input = ui.input(value="/dev/ttyUSB0").classes("w-full").props("dense outlined dark label='Serial Port' color=primary")
-        baud_input = ui.input(value="115200").classes("w-full mt-1").props("dense outlined dark label='Serial Baud' color=primary")
+        ui.label("◄ CONNECTION ►").classes("text-[10px] font-bold text-[#8888a0] mb-1 uppercase tracking-[0.15em]")
+        transport_type = ui.toggle({"serial": "Serial (USB)", "ros2": "ROS2 (WiFi)"}, value="ros2").props("dense color=cyan")
+        transport_type.classes("text-[10px]")
+        port_input = ui.input(value="/dev/ttyUSB0").classes("w-full mt-1").props("dense outlined dark label='Serial Port' color=cyan")
+        baud_input = ui.input(value="115200").classes("w-full mt-1").props("dense outlined dark label='Serial Baud' color=cyan")
         with ui.row().classes("gap-1 mt-1 w-full"):
-            ui.button("Connect", on_click=lambda: connect_serial(transport_type.value)).props("dense color=green size=sm").classes("flex-1")
-            ui.button("Disconnect", on_click=disconnect_serial).props("dense color=red size=sm").classes("flex-1")
+            _btn("#39ff14", "Connect", lambda: connect_serial(transport_type.value), "flex-1")
+            _btn("#ff3333", "Disconnect", disconnect_serial, "flex-1")
 
-        ui.separator().classes("my-2 bg-gray-700")
+        ui.separator().classes("my-2 bg-[#1a1a2e]")
 
         # micro-ROS Agent (WiFi/UDP)
-        ui.label("micro-ROS Agent (WiFi/UDP)").classes("text-xs font-bold text-gray-400 mb-1 uppercase tracking-wide")
-        agent_status = ui.label("Agent: ● Stopped").classes("text-xs text-gray-400")
+        ui.label("◄ AGENT (UDP) ►").classes("text-[10px] font-bold text-[#8888a0] mb-1 uppercase tracking-[0.15em]")
+        agent_status = ui.label("Agent: ○ STOPPED").classes("text-[10px] font-mono text-[#8888a0]")
         with ui.row().classes("gap-1 w-full"):
-            ui.button("▶ Launch", on_click=launch_agent).props("dense color=cyan size=sm").classes("flex-1")
-            ui.button("⏹ Stop", on_click=stop_agent).props("dense color=red size=sm").classes("flex-1")
+            _btn("#00f0ff", "▶ Launch", launch_agent, "flex-1")
+            _btn("#ff3333", "⏹ Stop", stop_agent, "flex-1")
 
-        ui.separator().classes("my-2 bg-gray-700")
+        ui.separator().classes("my-2 bg-[#1a1a2e]")
 
         # Mode
-        ui.label("Mode").classes("text-xs font-bold text-gray-400 mb-1 uppercase tracking-wide")
+        ui.label("◄ MODE ►").classes("text-[10px] font-bold text-[#8888a0] mb-1 uppercase tracking-[0.15em]")
         with ui.row().classes("gap-1"):
-            ui.button("PID", on_click=set_mode_pid).props("dense color=blue size=sm").classes("flex-1")
-            ui.button("Direct", on_click=set_mode_direct).props("dense color=orange size=sm").classes("flex-1")
-            ui.button("Stop", on_click=stop_motors).props("dense color=red size=sm").classes("flex-1")
+            _btn("#00f0ff", "PID", set_mode_pid, "flex-1")
+            _btn("#ff9f1c", "Direct", set_mode_direct, "flex-1")
+            _btn("#ff3333", "Stop", stop_motors, "flex-1")
 
-        ui.separator().classes("my-2 bg-gray-700")
+        ui.separator().classes("my-2 bg-[#1a1a2e]")
 
         # Target
-        ui.label("Target").classes("text-xs font-bold text-gray-400 mb-1 uppercase tracking-wide")
-        ui.number(value=30, min=-330, max=330, step=1, format="%.0f").bind_value(state, "target_rpm").props("dense outlined dark label=RPM color=primary").classes("w-full")
-        ui.button("Set Target", on_click=set_target).props("dense color=primary size=sm").classes("w-full mt-1")
+        ui.label("◄ TARGET ►").classes("text-[10px] font-bold text-[#8888a0] mb-1 uppercase tracking-[0.15em]")
+        ui.number(value=30, min=-330, max=330, step=1, format="%.0f").bind_value(state, "target_rpm").props("dense outlined dark label=RPM color=cyan").classes("w-full")
+        _btn("#00f0ff", "Set Target", set_target, "w-full mt-1")
 
-        ui.separator().classes("my-2 bg-gray-700")
+        ui.separator().classes("my-2 bg-[#1a1a2e]")
 
         # Direct PWM
-        ui.label("Direct PWM").classes("text-xs font-bold text-gray-400 mb-1 uppercase tracking-wide")
-        ui.number(value=100, min=0, max=255, step=1, format="%.0f").bind_value(state, "direct_pwm").props("dense outlined dark label=PWM color=primary").classes("w-full")
+        ui.label("◄ DIRECT PWM ►").classes("text-[10px] font-bold text-[#8888a0] mb-1 uppercase tracking-[0.15em]")
+        ui.number(value=100, min=0, max=255, step=1, format="%.0f").bind_value(state, "direct_pwm").props("dense outlined dark label=PWM color=orange").classes("w-full")
 
-        ui.separator().classes("my-2 bg-gray-700")
+        ui.separator().classes("my-2 bg-[#1a1a2e]")
 
         # PID Parameters
-        ui.label("PID Parameters").classes("text-xs font-bold text-gray-400 mb-1 uppercase tracking-wide")
-        ui.number(value=1.0, min=0, max=100, step=0.1, format="%.2f").bind_value(state, "kp").props("dense outlined dark label=Kp color=primary").classes("w-full")
-        ui.number(value=0.0, min=0, max=10, step=0.01, format="%.3f").bind_value(state, "ki").props("dense outlined dark label=Ki color=primary").classes("w-full mt-1")
-        ui.number(value=0.0, min=0, max=10, step=0.01, format="%.3f").bind_value(state, "kd").props("dense outlined dark label=Kd color=primary").classes("w-full mt-1")
-        ui.number(value=10.0, min=1, max=100, step=1, format="%.0f").bind_value(state, "output_scale").props("dense outlined dark label=Output Scale color=primary").classes("w-full mt-1")
-        ui.button("Apply PID", on_click=send_pid_params).props("dense color=primary size=sm").classes("w-full mt-1")
+        ui.label("◄ PID GAINS ►").classes("text-[10px] font-bold text-[#8888a0] mb-1 uppercase tracking-[0.15em]")
+        ui.number(value=1.0, min=0, max=100, step=0.1, format="%.2f").bind_value(state, "kp").props("dense outlined dark label=Kp color=cyan").classes("w-full")
+        ui.number(value=0.0, min=0, max=10, step=0.01, format="%.3f").bind_value(state, "ki").props("dense outlined dark label=Ki color=cyan").classes("w-full mt-1")
+        ui.number(value=0.0, min=0, max=10, step=0.01, format="%.3f").bind_value(state, "kd").props("dense outlined dark label=Kd color=cyan").classes("w-full mt-1")
+        ui.number(value=10.0, min=1, max=100, step=1, format="%.0f").bind_value(state, "output_scale").props("dense outlined dark label='Out Scale' color=cyan").classes("w-full mt-1")
+        _btn("#00f0ff", "Apply PID", send_pid_params, "w-full mt-1")
 
-        ui.separator().classes("my-2 bg-gray-700")
+        ui.separator().classes("my-2 bg-[#1a1a2e]")
 
         # Step Test
-        ui.label("Step Test").classes("text-xs font-bold text-gray-400 mb-1 uppercase tracking-wide")
-        ui.number(value=5.0, min=1, max=30, step=0.5, format="%.1f").bind_value(state, "step_test_duration").props("dense outlined dark label=Duration (s) color=primary").classes("w-full")
-        ui.button("▶ Run Step Test", on_click=start_step_test).props("dense color=orange size=sm").classes("w-full mt-1")
+        ui.label("◄ STEP TEST ►").classes("text-[10px] font-bold text-[#8888a0] mb-1 uppercase tracking-[0.15em]")
+        ui.number(value=5.0, min=1, max=30, step=0.5, format="%.1f").bind_value(state, "step_test_duration").props("dense outlined dark label=Duration color=orange").classes("w-full")
+        _btn("#ff9f1c", "▶ Run Test", start_step_test, "w-full mt-1")
 
-        ui.separator().classes("my-2 bg-gray-700")
+        ui.separator().classes("my-2 bg-[#1a1a2e]")
 
         # Utilities
-        ui.label("Utilities").classes("text-xs font-bold text-gray-400 mb-1 uppercase tracking-wide")
+        ui.label("◄ UTILITIES ►").classes("text-[10px] font-bold text-[#8888a0] mb-1 uppercase tracking-[0.15em]")
         with ui.row().classes("gap-1"):
-            ui.button("📝 Log", on_click=toggle_logging).props("dense color=secondary size=sm").classes("flex-1")
-            ui.button("🗑 Clear", on_click=clear_buffers).props("dense color=grey size=sm").classes("flex-1")
+            _btn("#8888a0", "Log", toggle_logging, "flex-1")
+            _btn("#ff3333", "Clear", clear_buffers, "flex-1")
 
 # Main content area
 with ui.column().classes("w-full flex-1 p-3 gap-3"):
     # Motor status bar
     with ui.row().classes("w-full gap-3"):
         for motor_id in ["FL", "FR"]:
-            with ui.card().classes("flex-1 p-3"):
+            accent = "#00f0ff" if motor_id == "FL" else "#ff00ff"
+            with ui.card().classes(f"flex-1 p-3 bg-[#0f0f14] border border-[{accent}]/30 shadow-[0_0_10px_rgba({ '0,240,255' if motor_id == 'FL' else '255,0,255' },0.05)]"):
                 with ui.row().classes("w-full items-center"):
-                    ui.label(motor_id).classes("text-sm font-bold mr-4 w-8")
+                    ui.label(f"[{motor_id}]").classes(f"text-sm font-bold mr-4 w-10 font-mono text-[{accent}]")
                     motor_cards[motor_id] = {
-                        "rpm": ui.label("RPM: 0.0").classes("text-xs w-24"),
-                        "filt": ui.label("F: 0.0").classes("text-xs w-24"),
-                        "pwm": ui.label("PWM: 0.0").classes("text-xs w-24"),
-                        "dir": ui.label("Dir: STP").classes("text-xs w-20"),
-                        "err": ui.label("Err: 0.0").classes("text-xs"),
+                        "rpm": ui.label("RPM: 0.0").classes("text-[10px] w-24 font-mono text-[#e0e0e0]"),
+                        "filt": ui.label("F: 0.0").classes("text-[10px] w-24 font-mono text-[#8888a0]"),
+                        "pwm": ui.label("PWM: 0.0").classes("text-[10px] w-24 font-mono text-[#e0e0e0]"),
+                        "dir": ui.label("DIR: STP").classes("text-[10px] w-20 font-mono text-[#8888a0]"),
+                        "err": ui.label("ERR: 0.0").classes("text-[10px] font-mono text-[#8888a0]"),
                     }
 
     # Charts - fill remaining space with explicit heights
     with ui.column().classes("w-full gap-2"):
-        rpm_chart = ui.echart(build_rpm_chart()).classes("w-full h-80")
-        pwr_chart = ui.echart(build_pwr_chart()).classes("w-full h-64")
-        error_chart = ui.echart(build_error_chart()).classes("w-full h-64")
+        with ui.card().classes("w-full bg-[#0f0f14] border border-[#1a1a2e]"):
+            rpm_chart = ui.echart(build_rpm_chart()).classes("w-full h-80")
+        with ui.card().classes("w-full bg-[#0f0f14] border border-[#1a1a2e]"):
+            pwr_chart = ui.echart(build_pwr_chart()).classes("w-full h-64")
+        with ui.card().classes("w-full bg-[#0f0f14] border border-[#1a1a2e]"):
+            error_chart = ui.echart(build_error_chart()).classes("w-full h-64")
 
     # Metrics bar at bottom
-    with ui.card().classes("w-full p-2"):
+    with ui.card().classes("w-full p-2 bg-[#0f0f14] border border-[#1a1a2e]"):
         with ui.row().classes("w-full items-center"):
-            ui.label("Step Response").classes("text-xs font-bold mr-4")
-            metrics_label = ui.markdown("Run a step test to see metrics.").classes("text-xs flex-1")
+            ui.label("◄ STEP RESPONSE ►").classes("text-[10px] font-bold mr-4 text-[#8888a0] tracking-[0.15em]")
+            metrics_label = ui.markdown("Run a step test to see metrics.").classes("text-[10px] flex-1 font-mono text-[#8888a0]")
 
 # ─── Auto-update timer ───────────────────────────────────────────────────
 
