@@ -66,6 +66,7 @@ class ZieglerNicholsStepResponse(TuningMethod):
         transport: Any,
         motor_id: str,
         target_rpm: float = 60,
+        state_source=lambda: None,
         **kwargs,
     ) -> TuningResult:
         step_pwm = int(kwargs.get("step_pwm", 80))
@@ -75,6 +76,13 @@ class ZieglerNicholsStepResponse(TuningMethod):
         data: list[dict] = []
         start_time = time.time()
         poll_interval = 0.02  # 50 Hz polling
+        self._running = True
+
+        def _poll_rpm() -> float:
+            state = state_source()
+            if state and motor_id in state.motors:
+                return state.motors[motor_id].rpm_filt
+            return 0.0
 
         # Phase 1: Stop
         self._start_phase("Stopping motors")
@@ -85,8 +93,9 @@ class ZieglerNicholsStepResponse(TuningMethod):
         # Phase 2: Capture baseline (before step)
         self._start_phase("Capturing baseline", "0.5s pre-step recording")
         for _ in range(int(0.5 / poll_interval)):
-            await transport.send_command("g")
-            data.append({"t": time.time() - start_time, "rpm": 0.0, "pwm": 0.0})
+            if not self._running:
+                break
+            data.append({"t": time.time() - start_time, "rpm": _poll_rpm(), "pwm": 0.0})
             await asyncio.sleep(poll_interval)
         self._complete_phase("Baseline captured")
 
@@ -99,10 +108,11 @@ class ZieglerNicholsStepResponse(TuningMethod):
         self._start_phase("Collecting reaction curve", f"{collect_seconds}s recording")
         polls = int(collect_seconds / poll_interval)
         for _ in range(polls):
-            await transport.send_command("g")
-            data.append({"t": time.time() - start_time, "pwm": float(step_pwm)})
+            if not self._running:
+                break
+            data.append({"t": time.time() - start_time, "rpm": _poll_rpm(), "pwm": float(step_pwm)})
             await asyncio.sleep(poll_interval)
-        self._complete_phase(f"{polls} samples collected ({collect_seconds:.1f}s)")
+        self._complete_phase(f"{len(data)} samples collected ({collect_seconds:.1f}s)")
 
         # Phase 5: Stop motors
         self._start_phase("Stopping motors")

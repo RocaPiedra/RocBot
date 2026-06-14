@@ -4,6 +4,8 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Any, Callable, Optional
 
+from rocbot_tuner.models import ControllerState
+
 
 @dataclass
 class TuningPhase:
@@ -35,7 +37,7 @@ class TuningResult:
     data: dict[str, Any] = field(default_factory=dict)
 
     def summary(self) -> str:
-        phase_line = " → ".join(
+        phase_line = " -> ".join(
             f"[{_phase_icon(p.status)}] {p.name}" for p in self.phases
         )
         return (
@@ -61,6 +63,7 @@ class TuningMethod(ABC):
     def __init__(self):
         self._phases: list[TuningPhase] = []
         self._on_phase_change: Optional[Callable] = None
+        self._running = False
 
     @abstractmethod
     async def run(
@@ -68,6 +71,7 @@ class TuningMethod(ABC):
         transport: Any,
         motor_id: str,
         target_rpm: float,
+        state_source: Callable[[], Optional[ControllerState]] = lambda: None,
         **kwargs,
     ) -> TuningResult:
         """Execute the full tuning procedure.
@@ -76,6 +80,9 @@ class TuningMethod(ABC):
             transport: Connected Transport object
             motor_id: Motor to tune (FL, FR, BL, BR)
             target_rpm: Target RPM for the test step
+            state_source: Callable that returns the latest ControllerState
+                          (used to read real-time motor data without blocking
+                           the transport read loop).
             **kwargs: Method-specific parameters
 
         Returns:
@@ -143,3 +150,7 @@ class TuningMethod(ABC):
             self._phases[-1].message = message
             if self._on_phase_change:
                 self._on_phase_change(self._phases[-1])
+
+    def stop(self):
+        """Request graceful stop of the tuning procedure."""
+        self._running = False

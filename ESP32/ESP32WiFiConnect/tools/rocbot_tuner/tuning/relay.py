@@ -88,6 +88,7 @@ class RelayTuning(TuningMethod):
         transport: Any,
         motor_id: str,
         target_rpm: float = 60,
+        state_source=lambda: None,
         **kwargs,
     ) -> TuningResult:
         relay_amp = int(kwargs.get("relay_amplitude", 80))
@@ -95,6 +96,16 @@ class RelayTuning(TuningMethod):
         max_cycles = int(kwargs.get("max_cycles", 6))
         pid_type = kwargs.get("pid_type", "pid")
         setpoint = float(kwargs.get("target_rpm", target_rpm))
+
+        self._running = True
+        poll_interval = 0.02
+        time_limit = 30.0  # Safety timeout
+
+        def _poll_rpm() -> float:
+            state = state_source()
+            if state and motor_id in state.motors:
+                return state.motors[motor_id].rpm_filt
+            return 0.0
 
         # Phase 1: Stop & prepare
         self._start_phase("Stopping motors")
@@ -127,15 +138,10 @@ class RelayTuning(TuningMethod):
         current_peak = 0.0
         start_time = time.time()
 
-        # We track oscillations by monitoring the process variable via 'g' commands
-        poll_interval = 0.02
-        time_limit = 30.0  # Safety timeout
-
-        last_reported_rpm = 0.0
-
         while zero_crossings < max_cycles * 2 and (time.time() - start_time) < time_limit:
-            # Poll current state
-            await transport.send_command("g")
+            if not self._running:
+                break
+
             # Apply relay control
             if relay_on:
                 await transport.send_command(f"d{relay_output}")
@@ -144,13 +150,7 @@ class RelayTuning(TuningMethod):
 
             await asyncio.sleep(poll_interval)
 
-            # The actual RPM feedback comes from the ongoing serial_reader
-            # that populates shared state. For standalone use we rely on the
-            # caller to provide feedback via shared state or kwargs.
-            # We use a simplified approach: send 'g' and read the response
-            # via a callback we've registered.
-            current_rpm = getattr(self, "_last_rpm", 0.0)
-
+            current_rpm = _poll_rpm()
             error = setpoint - current_rpm
 
             # Relay switching logic with hysteresis

@@ -131,17 +131,33 @@ class AppState:
 
         # Calibration state
         self.calibration = ChannelCalibration()
+        self.calibration_running = False
+        self.cal_buffers: dict[str, MotorBuffer] = {}
+        self.cal_pwm_targets: dict[str, float] = {}
+        self.calibration_result: Optional[CalibrationResult] = None
+        self.cal_motors = "FL,FR"
 
         # Tuning state
         self.tuning_method_id = "ziegler_nichols"
         self.tuning_target_rpm = 60
         self.tuning_result: Optional[TuningResult] = None
         self.tuning_running = False
+        self.tuning_buffers: dict[str, MotorBuffer] = {}
 
     def get_buffer(self, motor_id: str) -> MotorBuffer:
         if motor_id not in self.buffers:
             self.buffers[motor_id] = MotorBuffer()
         return self.buffers[motor_id]
+
+    def get_cal_buffer(self, motor_id: str) -> MotorBuffer:
+        if motor_id not in self.cal_buffers:
+            self.cal_buffers[motor_id] = MotorBuffer(maxlen=5000)
+        return self.cal_buffers[motor_id]
+
+    def get_tuning_buffer(self, motor_id: str) -> MotorBuffer:
+        if motor_id not in self.tuning_buffers:
+            self.tuning_buffers[motor_id] = MotorBuffer(maxlen=5000)
+        return self.tuning_buffers[motor_id]
 
 
 state = AppState()
@@ -266,6 +282,20 @@ body { background-color: #050508 !important; font-family: 'JetBrains Mono', 'Fir
 .q-tab { text-transform: uppercase; letter-spacing: 0.1em; font-weight: 600; }
 .q-tab--active { color: #00f0ff !important; }
 .q-tabs__indicator { background: #00f0ff !important; }
+/* Mode toggle */
+.q-btn-toggle .q-btn {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    border: 2px solid #1a1a2e !important;
+    border-radius: 6px !important;
+    padding: 6px 12px;
+}
+.q-btn-toggle .q-btn--active {
+    border-color: currentColor !important;
+    box-shadow: 0 0 8px rgba(0, 240, 255, 0.2);
+}
 """)
 
 # ─── UI Components ───────────────────────────────────────────────────────
@@ -280,6 +310,9 @@ status_label: Optional[ui.label] = None
 mode_label: Optional[ui.label] = None
 log_label: Optional[ui.label] = None
 agent_status: Optional[ui.label] = None
+
+# Mode toggle
+mode_toggle: Optional[ui.toggle] = None
 
 # PID sliders
 kp_slider: Optional[ui.number] = None
@@ -297,18 +330,55 @@ metrics_label: Optional[ui.markdown] = None
 cal_status: Optional[ui.label] = None
 cal_results: Optional[ui.markdown] = None
 cal_progress: Optional[ui.linear_progress] = None
+cal_rpm_chart: Optional[ui.echart] = None
+cal_pwr_chart: Optional[ui.echart] = None
 
 # Tuning UI refs
 tuning_status: Optional[ui.label] = None
 tuning_result_label: Optional[ui.markdown] = None
 tuning_phases: Optional[ui.markdown] = None
 tuning_params_container: Any = None
+tuning_rpm_chart: Optional[ui.echart] = None
+tuning_pwr_chart: Optional[ui.echart] = None
 
 # ─── Chart Update ────────────────────────────────────────────────────────
 
 
+def _build_chart_option(buffers: dict[str, MotorBuffer], chart_builder, include_target: bool = True):
+    """Build a chart option from a set of motor buffers."""
+    option = chart_builder()
+    for motor_id, buf in buffers.items():
+        if not buf.timestamps:
+            continue
+        colors = MOTOR_COLORS.get(motor_id, MOTOR_COLORS["FL"])
+        time_labels = [f"{t:.1f}" for t in buf.timestamps]
+
+        if include_target:
+            option["legend"]["data"].append(f"{motor_id} Target")
+            option["series"].append({
+                "name": f"{motor_id} Target",
+                "type": "line",
+                "data": list(buf.target_rpm),
+                "lineStyle": {"type": "dashed", "width": 1},
+                "itemStyle": {"color": colors["target"]},
+                "symbol": "none",
+            })
+        option["legend"]["data"].append(f"{motor_id} RPM")
+        option["series"].append({
+            "name": f"{motor_id} RPM",
+            "type": "line",
+            "data": [round(v, 1) for v in buf.rpm_filt],
+            "lineStyle": {"width": 2},
+            "itemStyle": {"color": colors["rpm_filt"]},
+            "symbol": "none",
+        })
+        option["xAxis"]["data"] = time_labels
+    return option
+
+
 def update_charts():
-    """Update all three ECharts with current buffer data."""
+    """Update all dashboard, calibration, and tuning charts."""
+    # Dashboard charts
     if not rpm_chart:
         return
 
@@ -377,6 +447,62 @@ def update_charts():
     error_chart.options.update(error_option)
     error_chart.update()
 
+    # Calibration charts
+    if cal_rpm_chart:
+        cal_option = _build_chart_option(state.cal_buffers, build_rpm_chart)
+        cal_rpm_chart.options.clear()
+        cal_rpm_chart.options.update(cal_option)
+        cal_rpm_chart.update()
+
+    if cal_pwr_chart:
+        cal_pwr_option = build_pwr_chart()
+        for motor_id, buf in state.cal_buffers.items():
+            if not buf.timestamps:
+                continue
+            colors = MOTOR_COLORS.get(motor_id, MOTOR_COLORS["FL"])
+            time_labels = [f"{t:.1f}" for t in buf.timestamps]
+            cal_pwr_option["legend"]["data"].append(f"{motor_id} PWM")
+            cal_pwr_option["series"].append({
+                "name": f"{motor_id} PWM",
+                "type": "line",
+                "data": [round(v, 1) for v in buf.pwr_filt],
+                "lineStyle": {"width": 2},
+                "itemStyle": {"color": colors["pwr"]},
+                "symbol": "none",
+            })
+            cal_pwr_option["xAxis"]["data"] = time_labels
+        cal_pwr_chart.options.clear()
+        cal_pwr_chart.options.update(cal_pwr_option)
+        cal_pwr_chart.update()
+
+    # Tuning charts
+    if tuning_rpm_chart:
+        tun_option = _build_chart_option(state.tuning_buffers, build_rpm_chart)
+        tuning_rpm_chart.options.clear()
+        tuning_rpm_chart.options.update(tun_option)
+        tuning_rpm_chart.update()
+
+    if tuning_pwr_chart:
+        tun_pwr_option = build_pwr_chart()
+        for motor_id, buf in state.tuning_buffers.items():
+            if not buf.timestamps:
+                continue
+            colors = MOTOR_COLORS.get(motor_id, MOTOR_COLORS["FL"])
+            time_labels = [f"{t:.1f}" for t in buf.timestamps]
+            tun_pwr_option["legend"]["data"].append(f"{motor_id} PWM")
+            tun_pwr_option["series"].append({
+                "name": f"{motor_id} PWM",
+                "type": "line",
+                "data": [round(v, 1) for v in buf.pwr_filt],
+                "lineStyle": {"width": 2},
+                "itemStyle": {"color": colors["pwr"]},
+                "symbol": "none",
+            })
+            tun_pwr_option["xAxis"]["data"] = time_labels
+        tuning_pwr_chart.options.clear()
+        tuning_pwr_chart.options.update(tun_pwr_option)
+        tuning_pwr_chart.update()
+
 
 def update_motor_cards():
     """Update motor state display cards."""
@@ -412,9 +538,27 @@ async def serial_reader():
                     state.step_test_buffers[motor_id] = MotorBuffer(maxlen=5000)
                 state.step_test_buffers[motor_id].update(motor, new_state.timestamp)
 
-            # Calibration data feed
-            if state.calibration.status == "running":
-                _feed_calibration(motor_id, motor)
+            # Calibration buffer
+            if state.calibration_running:
+                cal_buf = state.get_cal_buffer(motor_id)
+                # Override target with current PWM level so charts show the step
+                cal_motor = MotorState(
+                    motor_id=motor.motor_id,
+                    target_rpm=state.cal_pwm_targets.get(motor_id, motor.target_rpm),
+                    rpm=motor.rpm,
+                    rpm_filt=motor.rpm_filt,
+                    pwr=motor.pwr,
+                    pwr_filt=motor.pwr_filt,
+                    direction=motor.direction,
+                    pulses=motor.pulses,
+                    timestamp=motor.timestamp,
+                )
+                cal_buf.update(cal_motor, new_state.timestamp)
+
+            # Tuning buffer
+            if state.tuning_running:
+                tun_buf = state.get_tuning_buffer(motor_id)
+                tun_buf.update(motor, new_state.timestamp)
 
         # Log if enabled
         if state.logging:
@@ -428,21 +572,6 @@ async def serial_reader():
         if status_label:
             status_label.set_text("● Disconnected")
             status_label.style("color: red")
-
-
-# ─── Calibration Data Feed ───────────────────────────────────────────────
-
-_cal_data: dict[str, dict[int, list[float]]] = {}
-_cal_current_pwm: int = 0
-
-def _feed_calibration(motor_id: str, motor: MotorState):
-    """Feed live RPM data into the calibration buffer."""
-    global _cal_current_pwm
-    if motor_id not in _cal_data:
-        _cal_data[motor_id] = {}
-    if _cal_current_pwm not in _cal_data[motor_id]:
-        _cal_data[motor_id][_cal_current_pwm] = []
-    _cal_data[motor_id][_cal_current_pwm].append(motor.rpm_filt)
 
 
 # ─── UI Event Handlers ───────────────────────────────────────────────────
@@ -538,13 +667,43 @@ async def stop_agent():
         ui.notify(f"Failed to stop agent: {e}", type="negative")
 
 
+async def stop_all():
+    """Stop all active procedures: motors, step test, calibration, tuning."""
+    # Stop motors
+    if state.connected and state.transport:
+        try:
+            await state.transport.send_command("s")
+        except Exception:
+            pass
+    state.mode = "STOP"
+    state.step_test_active = False
+    state.calibration_running = False
+    state.tuning_running = False
+
+    # Stop calibration instance
+    state.calibration.stop()
+
+    # Stop tuning instance
+    global _tuning_instance
+    if _tuning_instance is not None:
+        _tuning_instance.stop()
+        _tuning_instance = None
+
+    if mode_label:
+        mode_label.set_text("Mode: STOP")
+    ui.notify("All procedures stopped")
+
+
 async def disconnect_serial():
+    await stop_all()
     if state.transport:
         await state.transport.disconnect()
-        state.connected = False
+        state.transport = None
+    state.connected = False
+    if status_label:
         status_label.set_text("● Disconnected")
         status_label.style("color: red")
-        ui.notify("Disconnected")
+    ui.notify("Disconnected")
 
 
 async def send_pid_params():
@@ -557,6 +716,17 @@ async def send_pid_params():
     await state.transport.send_command(f"kd{state.kd}")
     await state.transport.send_command(f"os{state.output_scale}")
     ui.notify(f"PID: Kp={state.kp} Ki={state.ki} Kd={state.kd} OS={state.output_scale}")
+
+
+async def _on_mode_change(e):
+    """Dispatch mode change from toggle to the correct handler."""
+    mode = e.value
+    if mode == "PID":
+        await set_mode_pid()
+    elif mode == "DIRECT":
+        await set_mode_direct()
+    elif mode == "STOP":
+        await stop_motors()
 
 
 async def set_mode_pid():
@@ -580,10 +750,7 @@ async def set_mode_direct():
 async def stop_motors():
     if not state.connected:
         return
-    await state.transport.send_command("s")
-    state.mode = "STOP"
-    mode_label.set_text("Mode: STOP")
-    ui.notify("Motors stopped")
+    await stop_all()
 
 
 async def set_target():
@@ -651,6 +818,10 @@ async def toggle_logging():
 async def clear_buffers():
     for buf in state.buffers.values():
         buf.clear()
+    for buf in state.cal_buffers.values():
+        buf.clear()
+    for buf in state.tuning_buffers.values():
+        buf.clear()
     ui.notify("Buffers cleared")
 
 
@@ -659,14 +830,13 @@ async def clear_buffers():
 
 async def run_calibration():
     """Run the channel imbalance calibration."""
-    global _cal_data, _cal_current_pwm
-
     if not state.connected:
         ui.notify("Not connected", type="warning")
         return
 
     # Read calibration params from UI
-    motor_ids = ["FL", "FR"]
+    motors_text = getattr(state, "cal_motors", "FL,FR")
+    motor_ids = [m.strip() for m in motors_text.split(",")]
     pwm_levels_text = cal_pwm_input.value or "80,120,160,200"
     try:
         pwm_levels = [int(x.strip()) for x in pwm_levels_text.split(",")]
@@ -677,12 +847,16 @@ async def run_calibration():
     direction = cal_dir_toggle.value  # "forward" or "reverse"
 
     # Reset data
-    _cal_data = {mid: {} for mid in motor_ids}
-    _cal_current_pwm = 0
+    state.cal_buffers.clear()
+    state.cal_pwm_targets.clear()
+    state.calibration_running = True
+    state.calibration.status = "running"
+    state.calibration_result = None
 
     cal_status.set_text("Status: Running...")
     cal_status.style("color: #ff9f1c")
     cal_results.set_text("Collecting data...")
+    cal_progress.set_value(0.0)
 
     total_steps = len(pwm_levels) + 2  # stop + levels + stop + compute
     step = 0
@@ -693,10 +867,14 @@ async def run_calibration():
     await state.transport.send_command("s")
     await asyncio.sleep(0.3)
 
+    if not state.calibration_running:
+        return
+
     # Step 2-N: Run each PWM level
     for i, pwm in enumerate(pwm_levels):
+        if not state.calibration_running:
+            break
         step += 1
-        _cal_current_pwm = pwm
         cal_status.set_text(f"[{step}/{total_steps}] Testing PWM {pwm} ({direction})...")
         cal_progress.set_value(step / total_steps)
 
@@ -705,33 +883,71 @@ async def run_calibration():
         else:
             await state.transport.send_command(f"d{pwm}")
 
+        # Set target RPM so the chart shows the expected value
+        for mid in motor_ids:
+            state.cal_pwm_targets[mid] = float(pwm)
+
         await asyncio.sleep(0.5)  # settle
+        if not state.calibration_running:
+            break
         await asyncio.sleep(2.0)  # hold / collect
 
     # Step N+1: Stop
     step += 1
     cal_status.set_text(f"[{step}/{total_steps}] Stopping...")
     await state.transport.send_command("s")
+    state.calibration_running = False
+    state.cal_pwm_targets.clear()
 
     # Step N+2: Compute
     step += 1
     cal_status.set_text(f"[{step}/{total_steps}] Computing results...")
     cal_progress.set_value(1.0)
 
-    # Build result from collected data
+    result = _compute_calibration_result(motor_ids, pwm_levels)
+
+    cal_results.set_text(result.summary())
+    cal_status.set_text("Status: Complete").style("color: #39ff14")
+    state.calibration.status = "complete"
+    ui.notify("Calibration complete!")
+    state.calibration_result = result
+
+
+def _compute_calibration_result(motor_ids, pwm_levels):
+    """Compute CalibrationResult from state.cal_buffers."""
     from rocbot_tuner.calibration import CalibrationResult, MotorCalibration, CalibrationPoint
     result = CalibrationResult(pwm_levels_tested=pwm_levels)
     for mid in motor_ids:
         cal = MotorCalibration(motor_id=mid)
-        data = _cal_data.get(mid, {})
-        for pwm in pwm_levels:
-            samples = data.get(pwm, [])
-            if samples:
-                avg_rpm = sum(samples) / len(samples)
-                cal.points.append(CalibrationPoint(pwm=pwm, avg_rpm=avg_rpm, samples=len(samples)))
+        buf = state.cal_buffers.get(mid)
+        if not buf:
+            continue
+        # Split buffer into segments by target_rpm changes
+        targets = list(buf.target_rpm)
+        rpms = list(buf.rpm_filt)
+        if not targets or not rpms:
+            continue
+        current_pwm = int(targets[0])
+        segment_rpms = []
+        for t, r in zip(targets, rpms):
+            if int(t) != current_pwm:
+                if segment_rpms:
+                    cal.points.append(CalibrationPoint(
+                        pwm=current_pwm,
+                        avg_rpm=sum(segment_rpms) / len(segment_rpms),
+                        samples=len(segment_rpms),
+                    ))
+                segment_rpms = []
+                current_pwm = int(t)
+            segment_rpms.append(r)
+        if segment_rpms:
+            cal.points.append(CalibrationPoint(
+                pwm=current_pwm,
+                avg_rpm=sum(segment_rpms) / len(segment_rpms),
+                samples=len(segment_rpms),
+            ))
         result.motors[mid] = cal
 
-    # Compute scales
     if result.motors:
         ref = max(result.motors.values(), key=lambda m: m.avg_efficiency)
         result.reference_motor = ref.motor_id
@@ -743,17 +959,11 @@ async def run_calibration():
                 result.suggested_scales[mid] = scale
             else:
                 result.suggested_scales[mid] = 1.0
-
-    cal_results.set_text(result.summary())
-    cal_status.set_text("Status: Complete").style("color: #39ff14")
-    state.calibration.status = "complete"
-    ui.notify("Calibration complete!")
-
-    # Store result for apply button
-    state.calibration_result = result
+    return result
 
 
 def stop_calibration():
+    state.calibration_running = False
     state.calibration.stop()
     cal_status.set_text("Status: Stopped").style("color: #ff3333")
     ui.notify("Calibration stopped")
@@ -813,7 +1023,7 @@ def _rebuild_tuning_params():
                     on_change=lambda v, k=pid: setattr(state, f"tuning_{k}", v),
                 ).props("dense outlined dark color=cyan").classes("w-full mt-1").tooltip(desc)
             elif ptype == "bool":
-                ui.checkbox(label, value=default).bind_value(state, f"tuning_{pid}").classes("text-xs text-[#8888a0] mt-1")
+                ui.checkbox(label, value=default).bind_value(state, f"tuning_{pid}", strict=False).classes("text-xs text-[#8888a0] mt-1")
             else:
                 min_v = param.get("min", 0)
                 max_v = param.get("max", 100)
@@ -821,7 +1031,7 @@ def _rebuild_tuning_params():
                 ui.number(
                     value=default, min=min_v, max=max_v, step=step,
                     format="%.2f" if ptype == "float" else "%.0f",
-                ).bind_value(state, f"tuning_{pid}").props(
+                ).bind_value(state, f"tuning_{pid}", strict=False).props(
                     f"dense outlined dark label='{label}' color=cyan"
                 ).classes("w-full mt-1").tooltip(desc)
 
@@ -848,6 +1058,7 @@ async def run_auto_tuning():
 
     _tuning_instance = method_cls()
     state.tuning_running = True
+    state.tuning_buffers.clear()
     tuning_status.set_text("Status: Running...").style("color: #ff9f1c")
     tuning_result_label.set_text("Running...")
     tuning_phases.set_text("")
@@ -877,6 +1088,7 @@ async def run_auto_tuning():
             transport=state.transport,
             motor_id=motor_id,
             target_rpm=target_rpm,
+            state_source=lambda: state.latest_state,
             **kwargs,
         )
         state.tuning_result = result
@@ -921,8 +1133,13 @@ async def stop_tuning():
     """Stop the running tuning procedure."""
     global _tuning_instance
     state.tuning_running = False
-    if state.connected:
-        await state.transport.send_command("s")
+    if _tuning_instance is not None:
+        _tuning_instance.stop()
+    if state.connected and state.transport:
+        try:
+            await state.transport.send_command("s")
+        except Exception:
+            pass
     tuning_status.set_text("Status: Stopped").style("color: #ff3333")
     ui.notify("Tuning stopped")
 
@@ -995,10 +1212,10 @@ with ui.left_drawer(fixed=True).props("bordered").classes("bg-[#0f0f14] w-64 bor
 
         # Mode
         ui.label("◄ MODE ►").classes("text-[10px] font-bold text-[#8888a0] mb-1 uppercase tracking-[0.15em]")
-        with ui.row().classes("gap-1"):
-            _btn("#00f0ff", "PID", set_mode_pid, "flex-1")
-            _btn("#ff9f1c", "Direct", set_mode_direct, "flex-1")
-            _btn("#ff3333", "Stop", stop_motors, "flex-1")
+        mode_toggle = ui.toggle(
+            {"PID": "PID", "DIRECT": "Direct", "STOP": "Stop"},
+            on_change=_on_mode_change,
+        ).bind_value(state, "mode").classes("w-full").props("rounded spread no-caps toggle-color=cyan color=grey-9")
 
         ui.separator().classes("my-2 bg-[#1a1a2e]")
 
@@ -1012,6 +1229,7 @@ with ui.left_drawer(fixed=True).props("bordered").classes("bg-[#0f0f14] w-64 bor
         # Direct PWM
         ui.label("◄ DIRECT PWM ►").classes("text-[10px] font-bold text-[#8888a0] mb-1 uppercase tracking-[0.15em]")
         ui.number(value=100, min=0, max=255, step=1, format="%.0f").bind_value(state, "direct_pwm").props("dense outlined dark label=PWM color=orange").classes("w-full")
+        _btn("#ff9f1c", "Set Direct", set_mode_direct, "w-full mt-1")
 
         ui.separator().classes("my-2 bg-[#1a1a2e]")
 
@@ -1038,14 +1256,26 @@ with ui.left_drawer(fixed=True).props("bordered").classes("bg-[#0f0f14] w-64 bor
             _btn("#8888a0", "Log", toggle_logging, "flex-1")
             _btn("#ff3333", "Clear", clear_buffers, "flex-1")
 
+
+def make_tuning_params_container():
+    """Create the container for dynamic method parameters."""
+    global tuning_params_container
+    if tuning_params_container is not None:
+        return
+    # We'll create it inside the tuning controls card after the method selector
+    # Use a placeholder approach: create a container that gets populated later
+    tuning_params_container = ui.column().classes("w-full gap-0")
+    _rebuild_tuning_params()
+
+
 # ─── Main Content with Tabs ──────────────────────────────────────────────
 
 with ui.column().classes("w-full flex-1 p-3 gap-0"):
     # Tabs
-    tabs = ui.tabs().classes("w-full border-b border-[#1a1a2e]")
-    ui.tab("Dashboard", icon="dashboard")
-    ui.tab("Calibration", icon="tune")
-    ui.tab("Auto-Tuning", icon="auto_fix_high")
+    with ui.tabs().classes("w-full border-b border-[#1a1a2e]") as tabs:
+        ui.tab("Dashboard", icon="dashboard")
+        ui.tab("Calibration", icon="tune")
+        ui.tab("Auto-Tuning", icon="auto_fix_high")
 
     # Tab panels
     with ui.tab_panels(tabs, value="Dashboard").classes("w-full flex-1"):
@@ -1126,6 +1356,13 @@ with ui.column().classes("w-full flex-1 p-3 gap-0"):
                     )
                     _btn("#39ff14", "Apply Scales to ESP32", apply_calibration, "w-full mt-2")
 
+            # Calibration charts
+            with ui.column().classes("w-full gap-2"):
+                with ui.card().classes("w-full bg-[#0f0f14] border border-[#1a1a2e]"):
+                    cal_rpm_chart = ui.echart(build_rpm_chart()).classes("w-full h-64")
+                with ui.card().classes("w-full bg-[#0f0f14] border border-[#1a1a2e]"):
+                    cal_pwr_chart = ui.echart(build_pwr_chart()).classes("w-full h-48")
+
             with ui.card().classes("w-full p-2 bg-[#0f0f14] border border-[#1a1a2e]"):
                 ui.label("◄ ABOUT ►").classes("text-[10px] font-bold text-[#8888a0] mb-1 uppercase tracking-[0.15em]")
                 ui.markdown(
@@ -1201,16 +1438,12 @@ with ui.column().classes("w-full flex-1 p-3 gap-0"):
                         )
                         _btn("#39ff14", "Apply Gains to ESP32", apply_tuning, "w-full mt-2")
 
-
-def make_tuning_params_container():
-    """Create the container for dynamic method parameters."""
-    global tuning_params_container
-    if tuning_params_container is not None:
-        return
-    # We'll create it inside the tuning controls card after the method selector
-    # Use a placeholder approach: create a container that gets populated later
-    tuning_params_container = ui.column().classes("w-full gap-0")
-    _rebuild_tuning_params()
+            # Tuning charts
+            with ui.column().classes("w-full gap-2"):
+                with ui.card().classes("w-full bg-[#0f0f14] border border-[#1a1a2e]"):
+                    tuning_rpm_chart = ui.echart(build_rpm_chart()).classes("w-full h-64")
+                with ui.card().classes("w-full bg-[#0f0f14] border border-[#1a1a2e]"):
+                    tuning_pwr_chart = ui.echart(build_pwr_chart()).classes("w-full h-48")
 
 
 # ─── Auto-update timer ───────────────────────────────────────────────────
