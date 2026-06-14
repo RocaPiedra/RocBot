@@ -7,6 +7,8 @@
  *   Subscribers:
  *     - /rocbot/motor_fl/target_rpm (std_msgs/Float64)
  *     - /rocbot/motor_fr/target_rpm (std_msgs/Float64)
+ *     - /rocbot/motor_fl/target_pwm (std_msgs/Float64)   - Direct PWM (-255..255)
+ *     - /rocbot/motor_fr/target_pwm (std_msgs/Float64)   - Direct PWM (-255..255)
  *     - /rocbot/command (std_msgs/String)
  *
  *   Publishers:
@@ -97,6 +99,8 @@ rcl_allocator_t allocator;
 // Subscribers
 rcl_subscription_t sub_fl_target;
 rcl_subscription_t sub_fr_target;
+rcl_subscription_t sub_fl_pwm_cmd;
+rcl_subscription_t sub_fr_pwm_cmd;
 rcl_subscription_t sub_command;
 
 // Publishers (using simple Float64 instead of Float64MultiArray for ESP32 reliability)
@@ -115,6 +119,8 @@ std_msgs__msg__String msg_command;
 std_msgs__msg__String msg_debug;
 std_msgs__msg__Float64 msg_fl_target;
 std_msgs__msg__Float64 msg_fr_target;
+std_msgs__msg__Float64 msg_fl_pwm_cmd;
+std_msgs__msg__Float64 msg_fr_pwm_cmd;
 
 // State buffers
 char debug_buffer[512];
@@ -124,6 +130,14 @@ char command_buffer[256];
 float ros_target_fl = 0.0;
 float ros_target_fr = 0.0;
 bool ros_targets_active = false;
+
+// Per-motor direct PWM (from ROS topics)
+int direct_pwm_fl = 0;
+int direct_pwm_fr = 0;
+bool direct_mode_fl = false;
+bool direct_mode_fr = false;
+bool reverse_direct_fl = false;
+bool reverse_direct_fr = false;
 
 // ============== Serial Input (same as main_debug.cpp) ==============
 void readSerialInput() {
@@ -167,6 +181,7 @@ void readSerialInput() {
             target_value = 0;
             pid_enabled = true;
             direct_mode = false;
+            direct_mode_fl = false; direct_mode_fr = false;
             Serial.print("Step test starting: target "); Serial.println(val);
             return;
         }
@@ -187,6 +202,7 @@ void readSerialInput() {
                 pwm = constrain(pwm, 0, 255);
                 direct_mode = true; pid_enabled = false; step_test_mode = false;
                 reverse_direct = false; direct_pwm = pwm;
+                direct_mode_fl = false; direct_mode_fr = false;
                 Serial.print("Direct PWM FORWARD: "); Serial.println(direct_pwm);
                 break;
             }
@@ -195,6 +211,7 @@ void readSerialInput() {
                 pwm = constrain(pwm, 0, 255);
                 direct_mode = true; pid_enabled = false; step_test_mode = false;
                 reverse_direct = true; direct_pwm = pwm;
+                direct_mode_fl = false; direct_mode_fr = false;
                 Serial.print("Direct PWM REVERSE: "); Serial.println(direct_pwm);
                 break;
             }
@@ -210,6 +227,7 @@ void readSerialInput() {
             }
             case 'p': {
                 pid_enabled = true; direct_mode = false; step_test_mode = false;
+                direct_mode_fl = false; direct_mode_fr = false;
                 Serial.println("PID mode enabled");
                 Serial.print("Current PID: Kp="); Serial.print(motors[0]->PID.kp);
                 Serial.print(" Ki="); Serial.print(motors[0]->PID.ki);
@@ -218,6 +236,7 @@ void readSerialInput() {
             }
             case 's': {
                 pid_enabled = false; direct_mode = false; step_test_mode = false;
+                direct_mode_fl = false; direct_mode_fr = false;
                 target_value = 0;
                 for(int id = 0; id < NUMMOTORS; id++) motors[id]->stop();
                 Serial.println("Motors stopped");
@@ -229,6 +248,7 @@ void readSerialInput() {
                     rpm_val = constrain(rpm_val, -MAXRPM, MAXRPM);
                     target_value = rpm_val;
                     pid_enabled = true; direct_mode = false; step_test_mode = false;
+                    direct_mode_fl = false; direct_mode_fr = false;
                     Serial.print("Target RPM set to: "); Serial.println(target_value);
                 }
                 break;
@@ -250,6 +270,34 @@ void sub_fr_callback(const void *msg_in) {
     ros_targets_active = true;
 }
 
+void sub_fl_pwm_cmd_callback(const void *msg_in) {
+    const std_msgs__msg__Float64 *msg = (const std_msgs__msg__Float64 *)msg_in;
+    float pwm = (float)msg->data;
+    if (pwm == 0) {
+        direct_mode_fl = false;
+        motors[0]->stop();
+    } else {
+        direct_mode_fl = true;
+        pid_enabled = false; step_test_mode = false;
+        reverse_direct_fl = (pwm < 0);
+        direct_pwm_fl = (int)constrain(abs((int)pwm), 0, 255);
+    }
+}
+
+void sub_fr_pwm_cmd_callback(const void *msg_in) {
+    const std_msgs__msg__Float64 *msg = (const std_msgs__msg__Float64 *)msg_in;
+    float pwm = (float)msg->data;
+    if (pwm == 0) {
+        direct_mode_fr = false;
+        motors[1]->stop();
+    } else {
+        direct_mode_fr = true;
+        pid_enabled = false; step_test_mode = false;
+        reverse_direct_fr = (pwm < 0);
+        direct_pwm_fr = (int)constrain(abs((int)pwm), 0, 255);
+    }
+}
+
 void sub_command_callback(const void *msg_in) {
     const std_msgs__msg__String *msg = (const std_msgs__msg__String *)msg_in;
     String cmd = String(msg->data.data);
@@ -267,36 +315,62 @@ void sub_command_callback(const void *msg_in) {
     } else if (cmd.startsWith("os")) {
         float val = cmd.substring(2).toFloat();
         for (int i = 0; i < NUMMOTORS; i++) motors[i]->PID.output_scale = val;
+    } else if (cmd.startsWith("step")) {
+        int val = cmd.substring(4).toInt();
+        step_test_mode = true;
+        step_test_target = val;
+        step_test_start = millis();
+        target_value = 0;
+        pid_enabled = true;
+        direct_mode = false; direct_mode_fl = false; direct_mode_fr = false;
     } else if (cmd == "p") {
         pid_enabled = true; direct_mode = false; step_test_mode = false;
+        direct_mode_fl = false; direct_mode_fr = false;
     } else if (cmd == "s") {
         pid_enabled = false; direct_mode = false; step_test_mode = false;
+        direct_mode_fl = false; direct_mode_fr = false;
         target_value = 0;
         for(int id = 0; id < NUMMOTORS; id++) motors[id]->stop();
+    } else if (cmd.startsWith("d")) {
+        int pwm = cmd.substring(1).toInt();
+        pwm = constrain(pwm, 0, 255);
+        direct_mode = true; pid_enabled = false; step_test_mode = false;
+        reverse_direct = false; direct_pwm = pwm;
+        direct_mode_fl = false; direct_mode_fr = false;
+    } else if (cmd.startsWith("D")) {
+        int pwm = cmd.substring(1).toInt();
+        pwm = constrain(pwm, 0, 255);
+        direct_mode = true; pid_enabled = false; step_test_mode = false;
+        reverse_direct = true; direct_pwm = pwm;
+        direct_mode_fl = false; direct_mode_fr = false;
     } else {
         int rpm_val = cmd.toInt();
         if (cmd.length() > 0 && (isdigit(cmd.charAt(0)) || cmd.charAt(0) == '-')) {
             target_value = constrain(rpm_val, -MAXRPM, MAXRPM);
             pid_enabled = true; direct_mode = false; step_test_mode = false;
+            direct_mode_fl = false; direct_mode_fr = false;
         }
     }
 }
 
-// ============== Debug Output (same format as main_debug.cpp) ==============
+// ============== Debug Output (serial + ROS) ==============
 void printDebugInfo() {
     if (millis() - lastDebugPrint < debugPrintInterval) return;
     lastDebugPrint = millis();
 
+    // --- Serial output ---
     Serial.print("--- DEBUG T:");
     Serial.print(millis());
     Serial.print(" ---");
 
     if (step_test_mode) {
         Serial.print(" STEP_TEST->"); Serial.print(step_test_target);
-    } else if (direct_mode) {
+    } else if (direct_mode || direct_mode_fl || direct_mode_fr) {
         Serial.print(" DIRECT:");
         Serial.print(reverse_direct ? "REV " : "FWD ");
         Serial.print(direct_pwm);
+        if (direct_mode_fl) { Serial.print(" FL:"); Serial.print(direct_pwm_fl); }
+        if (direct_mode_fr) { Serial.print(" FR:"); Serial.print(direct_pwm_fr); }
     } else if (pid_enabled) {
         Serial.print(" PID");
     } else {
@@ -328,6 +402,12 @@ void printDebugInfo() {
         Serial.print(" | ");
     }
     Serial.println();
+
+    // --- ROS publish (same data, same rate) ---
+    if (microros_connected) {
+        publish_motor_states();
+        publish_debug_string();
+    }
 }
 
 // ============== micro-ROS Setup (Official API) ==============
@@ -357,19 +437,25 @@ void setup_micro_ros() {
         return;
     }
 
-    // 9 handles: 3 subs + 5 pubs + 1 timer
-    rclc_executor_init(&executor, &support.context, 9, &allocator);
+    // 11 handles: 5 subs + 5 pubs + 1 timer
+    rclc_executor_init(&executor, &support.context, 11, &allocator);
 
     // --- Subscribers ---
     rclc_subscription_init_default(&sub_fl_target, &node,
         ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Float64), "rocbot/motor_fl/target_rpm");
     rclc_subscription_init_default(&sub_fr_target, &node,
         ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Float64), "rocbot/motor_fr/target_rpm");
+    rclc_subscription_init_default(&sub_fl_pwm_cmd, &node,
+        ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Float64), "rocbot/motor_fl/target_pwm");
+    rclc_subscription_init_default(&sub_fr_pwm_cmd, &node,
+        ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Float64), "rocbot/motor_fr/target_pwm");
     rclc_subscription_init_default(&sub_command, &node,
         ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, String), "rocbot/command");
 
     rclc_executor_add_subscription(&executor, &sub_fl_target, &msg_fl_target, &sub_fl_callback, ON_NEW_DATA);
     rclc_executor_add_subscription(&executor, &sub_fr_target, &msg_fr_target, &sub_fr_callback, ON_NEW_DATA);
+    rclc_executor_add_subscription(&executor, &sub_fl_pwm_cmd, &msg_fl_pwm_cmd, &sub_fl_pwm_cmd_callback, ON_NEW_DATA);
+    rclc_executor_add_subscription(&executor, &sub_fr_pwm_cmd, &msg_fr_pwm_cmd, &sub_fr_pwm_cmd_callback, ON_NEW_DATA);
     rclc_executor_add_subscription(&executor, &sub_command, &msg_command, &sub_command_callback, ON_NEW_DATA);
 
     // --- Publishers (using simple Float64 for ESP32 reliability) ---
@@ -424,9 +510,17 @@ void publish_debug_string() {
     if (step_test_mode) {
         len += snprintf(debug_buffer + len, sizeof(debug_buffer) - len,
             " STEP_TEST->%d", step_test_target);
-    } else if (direct_mode) {
+    } else if (direct_mode || direct_mode_fl || direct_mode_fr) {
         len += snprintf(debug_buffer + len, sizeof(debug_buffer) - len,
             " DIRECT:%s %d", reverse_direct ? "REV" : "FWD", direct_pwm);
+        if (direct_mode_fl) {
+            len += snprintf(debug_buffer + len, sizeof(debug_buffer) - len,
+                " FL:%s %d", reverse_direct_fl ? "REV" : "FWD", direct_pwm_fl);
+        }
+        if (direct_mode_fr) {
+            len += snprintf(debug_buffer + len, sizeof(debug_buffer) - len,
+                " FR:%s %d", reverse_direct_fr ? "REV" : "FWD", direct_pwm_fr);
+        }
     } else if (pid_enabled) {
         len += snprintf(debug_buffer + len, sizeof(debug_buffer) - len, " PID");
     } else {
@@ -522,10 +616,23 @@ void loop() {
         Serial.println("Step test complete");
     }
 
-    if (direct_mode) {
+    // Per-motor direct PWM (from ROS topics) overrides global direct_mode
+    if (direct_mode_fl || direct_mode_fr || direct_mode) {
         for(int id = 0; id < NUMMOTORS; id++) {
-            motors[id]->SetDirection(!reverse_direct);
-            motors[id]->SetSpeed(direct_pwm);
+            bool dm = direct_mode;
+            int pwm = direct_pwm;
+            bool rev = reverse_direct;
+
+            if (id == 0 && direct_mode_fl) {
+                dm = true; pwm = direct_pwm_fl; rev = reverse_direct_fl;
+            } else if (id == 1 && direct_mode_fr) {
+                dm = true; pwm = direct_pwm_fr; rev = reverse_direct_fr;
+            }
+
+            if (dm) {
+                motors[id]->SetDirection(!rev);
+                motors[id]->SetSpeed(pwm);
+            }
         }
     } else if (pid_enabled || step_test_mode) {
         long currT = micros();
@@ -547,12 +654,5 @@ void loop() {
         }
     }
 
-    // Debug output (serial)
+    // Debug output (serial) + ROS publish
     printDebugInfo();
-
-    // Publish ROS state at debug interval rate
-    if (microros_connected && (millis() - lastDebugPrint < debugPrintInterval + 5)) {
-        publish_motor_states();
-        publish_debug_string();
-    }
-}
