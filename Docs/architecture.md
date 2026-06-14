@@ -14,8 +14,16 @@ RocBot is an omnidirectional Autonomous Mobile Robot (AMR) built from low-cost, 
 │  └──────┬───────┘  └──────┬───────┘  └───────┬────────┘  │
 │         │                │                  │           │
 │         └────────────────┼──────────────────┘           │
-│                          │ WebSocket / HTTP              │
-└──────────────────────────┼──────────────────────────────┘
+│                          │                               │
+│  ┌──────────────────────────────────────────────────┐   │
+│  │         PID Tuner Dashboard (NiceGUI)             │   │
+│  │  - Real-time RPM/PWM/Error charts                │   │
+│  │  - L298N channel calibration                     │   │
+│  │  - Auto-tuning (ZN / Relay / Cohen-Coon)         │   │
+│  │  - Serial (USB) or ROS2 (WiFi/UDP) transport     │   │
+│  └──────────────────┬───────────────────────────────┘   │
+│                     │ HTTP :8080                          │
+└─────────────────────┼──────────────────────────────────┘
                            │
 ┌──────────────────────────┼──────────────────────────────┐
 │                    Jetson AGX Xavier                     │
@@ -101,6 +109,17 @@ Each wheel has:
 - UART serial (TX/RX, 2 wires + GND)
 - Baud rate: 115200 (or higher: 460800/921600 for lower latency)
 - No level shifting needed (both are 3.3V logic)
+
+### PC/Dev ↔ ESP32 (PID Tuner Connection)
+
+The `rocbot_tuner` web dashboard connects to the ESP32 via one of two transports:
+
+| Transport | Connection | When to Use |
+|-----------|-----------|-------------|
+| **Serial (USB)** | USB cable directly to ESP32 (appears as `/dev/ttyUSB0`) | Tuning with debug firmware (`main_debug.cpp`) |
+| **ROS2 (WiFi/UDP)** | ESP32 connects to WiFi, communicates via micro-ROS agent Docker container on the PC | Testing the micro-ROS firmware (`main_microros.cpp`) |
+
+The tuner runs as a NiceGUI web app on the development PC at **http://localhost:8080**.
 
 ---
 

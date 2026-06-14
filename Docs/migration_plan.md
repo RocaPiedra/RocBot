@@ -6,7 +6,7 @@ Phased implementation roadmap from current serial-controlled motor driver to a f
 
 ## Phase 1: Current State ✅
 
-**Status**: Working, deployed on ESP32 and Arduino Mega
+**Status**: Working, deployed on ESP32 with web-based PID tuner
 
 - [x] Dual motor PID control (FL, FR) at 5ms loop
 - [x] IIR low-pass filtering (RPM + power)
@@ -14,14 +14,19 @@ Phased implementation roadmap from current serial-controlled motor driver to a f
 - [x] Multi-motor Python plotter
 - [x] Encoder reading with direction detection
 - [x] Motor parameter calibration (Kp=0.8, Ki=1.0, Kd=0.1)
-- [x] ESP32 PlatformIO project (WiFi commented out)
+- [x] ESP32 PlatformIO project
 - [x] I2C communication experiments
 - [x] IMU BNO080 basic reading
+- [x] micro-ROS firmware (main_microros.cpp — ROS 2 topics over WiFi/UDP)
+- [x] Web-based PID tuner dashboard (NiceGUI, 3 tabs)
+- [x] L298N channel imbalance calibration (online measurement + output scale computation)
+- [x] Pluggable PID auto-tuning via strategy pattern (ZN, Relay, Cohen-Coon)
+- [x] Documentation in `Docs/pid_tuner.md`
 
 **Remaining tasks in Phase 1**:
 - [ ] Add BL and BR motor controllers (4-wheel configuration)
 - [ ] Implement omnidirectional wheel kinematics (for signal generation)
-- [ ] Refine PID gains for all 4 motors
+- [ ] Refine PID gains for all 4 motors using the auto-tuning tools
 - [ ] Migrate IMU from Arduino Mega to ESP32 I2C bus
 
 ---
@@ -30,15 +35,19 @@ Phased implementation roadmap from current serial-controlled motor driver to a f
 
 **Goal**: Control the robot wirelessly via WiFi (no Jetson required for basic testing)
 
-- [ ] Enable WiFi on ESP32 (create `ssid.hpp` with credentials)
-- [ ] Implement TCP socket server on ESP32
+**Status**: Partially complete — micro-ROS over WiFi/UDP is already working. Basic TCP server is pending.
+
+- [x] WiFi connection on ESP32 (ssid.hpp with credentials)
+- [x] micro-ROS WiFi/UDP transport (microros env in platformio.ini)
+- [ ] Implement standalone TCP socket server on ESP32 (non-ROS mode)
 - [ ] Accept RPM commands over TCP (same protocol as serial)
 - [ ] Stream motor state over TCP to connected clients
 - [ ] Write a simple Python test client for WiFi control
 - [ ] Add OTA (over-the-air) firmware update capability
 - [ ] Benchmark latency: WiFi vs serial
+- [ ] **NEW**: Flutter mobile/desktop app for Android + Linux (see [ROC Controller App](rocbot_controller_app.md))
 
-**Deliverable**: Robot controllable from any device on the local network via TCP socket.
+**Deliverable**: Robot controllable from any device on the local network via TCP socket, ROS 2, or native Flutter app.
 
 ---
 
@@ -55,14 +64,15 @@ Phased implementation roadmap from current serial-controlled motor driver to a f
 
 ### 3b: ESP32 micro-ROS Client
 
-- [ ] Set up micro-ROS build environment (Docker or colcon workspace)
-- [ ] Create micro-ROS client firmware for ESP32
-  - [ ] Replace serial protocol with micro-ROS pub/sub
-  - [ ] Publisher: `/joint_states` (wheel velocities)
-  - [ ] Publisher: `/imu/data` (orientation from BNO080)
-  - [ ] Subscriber: `/wheel_*/rpm_target` (per-wheel RPM setpoints)
-- [ ] Configure UART transport between ESP32 and Jetson
-- [ ] Verify: ESP32 publishes encoder data, receives RPM commands
+**Status**: The ESP32 micro-ROS client firmware is already implemented and tested (`main_microros.cpp`).
+
+- [x] micro-ROS client firmware for ESP32 (WiFi/UDP transport)
+- [x] Publishers: `/rocbot/motor_fl/rpm`, `/rocbot/motor_fr/rpm`, PWM, debug
+- [x] Subscribers: `/rocbot/motor_fl/target_rpm`, `/rocbot/motor_fr/target_rpm`, `/rocbot/command`
+- [x] Python ROS2 transport in tuner (`transport/ros2.py`)
+- [ ] Migrate topics to standard ROS 2 naming (`/joint_states`, `/wheel_*/target`)
+- [ ] Add BL/BR motor topics
+- [ ] Configure UART transport between ESP32 and Jetson (alternative to WiFi)
 
 ### 3c: ROS 2 Control Integration
 

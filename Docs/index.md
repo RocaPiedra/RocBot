@@ -47,8 +47,10 @@ RocBot/
 │   ├── arduino_i2c_master/
 │   └── arduino_i2c_slave/
 ├── ESP32/
-│   └── ESP32WiFiConnect/    # PlatformIO ESP32 port (WiFi in progress)
-│       └── src/             # Same C++ classes ported to ESP32
+│   └── ESP32WiFiConnect/    # PlatformIO ESP32 port
+│       ├── src/             # C++ firmware (main*.cpp, MotorController, PIDClass)
+│       └── tools/           # Python tooling
+│           └── rocbot_tuner/# PID tuner web dashboard (app.py, calibration.py, tuning/)
 ├── ArduinoPlotter.py         # Single-motor real-time plotter
 └── README.md                # Original project README
 ```
@@ -60,7 +62,11 @@ RocBot/
 - [IMU and I2C](imu_and_i2c.md) - BNO080 communication, I2C protocol
 - [ESP32 Port](esp32.md) - WiFi-enabled motor control
 - [Plotting Tools](plotting_tools.md) - Real-time data visualization in Python
+- [PID Tuner](pid_tuner.md) - Web dashboard, L298N calibration & auto-tuning
+- [ROC Controller App](rocbot_controller_app.md) - Flutter mobile/desktop app for Android + Linux
 - [Hardware Reference](hardware.md) - Pin assignments, connections, parts
+- [Electric Components](electric_components.md) - Battery, motors, drivers, processor specs
+- [Power Supply](power_supply.md) - How to drop 14.8V to 5V and 3.3V safely
 
 ## Key Design Decisions
 
