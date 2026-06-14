@@ -1,7 +1,6 @@
 {
 	"folders": [
 		{
-			"name": "RocBot",
 			"path": "../.."
 		},
 		{
@@ -9,24 +8,5 @@
 			"path": "."
 		}
 	],
-	"settings": {
-		"python.autoComplete.extraPaths": [
-			"${workspaceFolder}/sources/poky/bitbake/lib",
-			"${workspaceFolder}\\sources\\poky\\meta\\lib"
-		],
-		"python.analysis.extraPaths": [
-			"${workspaceFolder}/sources/poky/bitbake/lib",
-			"${workspaceFolder}\\sources\\poky\\meta\\lib"
-		],
-		"[python]": {
-			"diffEditor.ignoreTrimWhitespace": false,
-			"editor.formatOnType": true,
-			"editor.wordBasedSuggestions": "off",
-			"files.trimTrailingWhitespace": false
-		},
-		"[shellscript]": {
-			"files.eol": "\n",
-			"files.trimTrailingWhitespace": false
-		}
-	}
+	"settings": {}
 }
