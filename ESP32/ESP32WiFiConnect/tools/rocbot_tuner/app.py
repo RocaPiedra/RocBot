@@ -48,8 +48,18 @@ PLOT_UPDATE_MS = 50
 MOTOR_COLORS = {
     "FL": {"target": "#00f0ff", "rpm": "#00f0ff", "rpm_filt": "#00f0ff", "pwr": "#00f0ff"},
     "FR": {"target": "#ff00ff", "rpm": "#ff00ff", "rpm_filt": "#ff00ff", "pwr": "#ff00ff"},
+    "RL": {"target": "#39ff14", "rpm": "#39ff14", "rpm_filt": "#39ff14", "pwr": "#39ff14"},
+    "RR": {"target": "#ff9f1c", "rpm": "#ff9f1c", "rpm_filt": "#ff9f1c", "pwr": "#ff9f1c"},
+    # Legacy IDs from old logs (BL/BR = rear wheels before RL/RR naming)
     "BL": {"target": "#39ff14", "rpm": "#39ff14", "rpm_filt": "#39ff14", "pwr": "#39ff14"},
     "BR": {"target": "#ff9f1c", "rpm": "#ff9f1c", "rpm_filt": "#ff9f1c", "pwr": "#ff9f1c"},
+}
+
+MOTOR_ACCENTS = {
+    "FL": ("#00f0ff", "0,240,255"),
+    "FR": ("#ff00ff", "255,0,255"),
+    "RL": ("#39ff14", "57,255,20"),
+    "RR": ("#ff9f1c", "255,159,28"),
 }
 
 # ─── Data Buffers ────────────────────────────────────────────────────────
@@ -135,7 +145,7 @@ class AppState:
         self.cal_buffers: dict[str, MotorBuffer] = {}
         self.cal_pwm_targets: dict[str, float] = {}
         self.calibration_result: Optional[CalibrationResult] = None
-        self.cal_motors = "FL,FR"
+        self.cal_motors = "FL,FR,RL,RR"
 
         # Tuning state
         self.tuning_method_id = "ziegler_nichols"
@@ -840,7 +850,7 @@ async def run_calibration():
         return
 
     # Read calibration params from UI
-    motors_text = getattr(state, "cal_motors", "FL,FR")
+    motors_text = getattr(state, "cal_motors", "FL,FR,RL,RR")
     motor_ids = [m.strip() for m in motors_text.split(",")]
     pwm_levels_text = cal_pwm_input.value or "80,120,160,200"
     try:
@@ -1288,10 +1298,10 @@ with ui.column().classes("w-full flex-1 p-3 gap-0"):
         with ui.tab_panel("Dashboard").classes("p-2 gap-3"):
             # Motor status bar
             with ui.row().classes("w-full gap-3"):
-                for motor_id in ["FL", "FR"]:
-                    accent = "#00f0ff" if motor_id == "FL" else "#ff00ff"
+                for motor_id in ["FL", "FR", "RL", "RR"]:
+                    accent, glow = MOTOR_ACCENTS[motor_id]
                     with ui.card().classes(
-                        f"flex-1 p-3 bg-[#0f0f14] border border-[{accent}]/30 shadow-[0_0_10px_rgba({'0,240,255' if motor_id == 'FL' else '255,0,255'},0.05)]"
+                        f"flex-1 p-3 bg-[#0f0f14] border border-[{accent}]/30 shadow-[0_0_10px_rgba({glow},0.05)]"
                     ):
                         with ui.row().classes("w-full items-center"):
                             ui.label(f"[{motor_id}]").classes(f"text-sm font-bold mr-4 w-10 font-mono text-[{accent}]")
@@ -1331,7 +1341,7 @@ with ui.column().classes("w-full flex-1 p-3 gap-0"):
                         "text-[10px] text-[#8888a0] mb-2"
                     )
 
-                    ui.select(label="Motors", options=["FL,FR", "FL,FR,BL,BR", "FL", "FR"], value="FL,FR").props(
+                    ui.select(label="Motors", options=["FL,FR,RL,RR", "FL,FR", "RL,RR", "FL", "FR", "RL", "RR"], value="FL,FR,RL,RR").props(
                         "dense outlined dark color=cyan"
                     ).classes("w-full mt-1").bind_value(state, "cal_motors")
 
@@ -1412,7 +1422,7 @@ with ui.column().classes("w-full flex-1 p-3 gap-0"):
 
                     # Motor selector
                     tuning_motor_selector = ui.select(
-                        label="Motor", options=["FL", "FR", "BL", "BR"], value="FL",
+                        label="Motor", options=["FL", "FR", "RL", "RR"], value="FL",
                     ).props("dense outlined dark color=cyan").classes("w-full mt-1")
 
                     # Action buttons

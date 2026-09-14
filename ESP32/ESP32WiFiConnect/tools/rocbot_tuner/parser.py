@@ -7,6 +7,12 @@ from typing import Optional
 from rocbot_tuner.models import MotorState, ControllerState
 
 
+# Legacy motor IDs (pre-4-motor firmware used BL/BR for the rear wheels).
+# Normalized to the current RL/RR naming.
+LEGACY_MOTOR_IDS = {"BL": "RL", "BR": "RR"}
+VALID_MOTOR_IDS = ("FL", "FR", "RL", "RR")
+
+
 def parse_debug_line(line: str, start_time: float) -> Optional[ControllerState]:
     """
     Parse debug line format:
@@ -73,12 +79,12 @@ def parse_motor_debug_block(block: str) -> Optional[MotorState]:
     FL RPM:28.5 F:28.1 PWM:120.5 Out:12.0 Dir:FWD Pulses:42
     """
     # Must start with motor ID (allow leading whitespace)
-    id_match = re.match(r"^\s*(FL|FR|BL|BR)\s+", block)
+    id_match = re.match(r"^\s*(FL|FR|RL|RR|BL|BR)\s+", block)
     if not id_match:
         return None
 
     motor = MotorState()
-    motor.motor_id = id_match.group(1)
+    motor.motor_id = LEGACY_MOTOR_IDS.get(id_match.group(1), id_match.group(1))
 
     # Parse key:value pairs
     rpm_match = re.search(r"RPM:([\d.-]+)", block)
@@ -114,7 +120,9 @@ def parse_motor_state_block(block: str) -> Optional[MotorState]:
         return None
 
     motor_id = parts[0].strip()
-    if motor_id not in ("FL", "FR", "BL", "BR"):
+    if motor_id in LEGACY_MOTOR_IDS:
+        motor_id = LEGACY_MOTOR_IDS[motor_id]
+    if motor_id not in VALID_MOTOR_IDS:
         return None
 
     motor = MotorState()

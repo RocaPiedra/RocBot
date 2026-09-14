@@ -78,7 +78,7 @@ class TuningMethod(ABC):
 
         Args:
             transport: Connected Transport object
-            motor_id: Motor to tune (FL, FR, BL, BR)
+            motor_id: Motor to tune (FL, FR, RL, RR)
             target_rpm: Target RPM for the test step
             state_source: Callable that returns the latest ControllerState
                           (used to read real-time motor data without blocking

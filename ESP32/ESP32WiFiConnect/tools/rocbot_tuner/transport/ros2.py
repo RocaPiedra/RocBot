@@ -33,6 +33,14 @@ class _Ros2Bridge(Node):
             Float64, "rocbot/motor_fr/rpm", self._on_fr_rpm, 10)
         self._sub_fr_pwm = self.create_subscription(
             Float64, "rocbot/motor_fr/pwm", self._on_fr_pwm, 10)
+        self._sub_rl_rpm = self.create_subscription(
+            Float64, "rocbot/motor_rl/rpm", self._on_rl_rpm, 10)
+        self._sub_rl_pwm = self.create_subscription(
+            Float64, "rocbot/motor_rl/pwm", self._on_rl_pwm, 10)
+        self._sub_rr_rpm = self.create_subscription(
+            Float64, "rocbot/motor_rr/rpm", self._on_rr_rpm, 10)
+        self._sub_rr_pwm = self.create_subscription(
+            Float64, "rocbot/motor_rr/pwm", self._on_rr_pwm, 10)
         self._sub_debug = self.create_subscription(
             String, "rocbot/debug", self._on_debug, 10)
 
@@ -43,6 +51,8 @@ class _Ros2Bridge(Node):
         # State
         self._fl_state = MotorState(motor_id="FL")
         self._fr_state = MotorState(motor_id="FR")
+        self._rl_state = MotorState(motor_id="RL")
+        self._rr_state = MotorState(motor_id="RR")
         self._last_emit = 0.0
         self._emit_interval = 0.05  # 20 Hz
         self._mode = "STOP"
@@ -70,6 +80,26 @@ class _Ros2Bridge(Node):
 
     def _on_fr_pwm(self, msg: Float64):
         self._fr_state.pwr_filt = msg.data
+        if self._mode != "DIRECT":
+            self._try_emit()
+
+    def _on_rl_rpm(self, msg: Float64):
+        self._rl_state.rpm = msg.data
+        self._rl_state.rpm_filt = msg.data
+        self._try_emit()
+
+    def _on_rl_pwm(self, msg: Float64):
+        self._rl_state.pwr_filt = msg.data
+        if self._mode != "DIRECT":
+            self._try_emit()
+
+    def _on_rr_rpm(self, msg: Float64):
+        self._rr_state.rpm = msg.data
+        self._rr_state.rpm_filt = msg.data
+        self._try_emit()
+
+    def _on_rr_pwm(self, msg: Float64):
+        self._rr_state.pwr_filt = msg.data
         if self._mode != "DIRECT":
             self._try_emit()
 
@@ -111,10 +141,13 @@ class _Ros2Bridge(Node):
             # so the dashboard shows the real value being applied
             self._fl_state.pwr_filt = float(self._direct_pwm)
             self._fr_state.pwr_filt = float(self._direct_pwm)
+            self._rl_state.pwr_filt = float(self._direct_pwm)
+            self._rr_state.pwr_filt = float(self._direct_pwm)
 
         # Parse per-motor direction from the motor blocks
         # Format: FL RPM:28.5 F:28.1 PWM:120.5 Out:12.0 Dir:FWD Pulses:42
-        for motor_id, motor_state in [("FL", self._fl_state), ("FR", self._fr_state)]:
+        for motor_id, motor_state in [("FL", self._fl_state), ("FR", self._fr_state),
+                                      ("RL", self._rl_state), ("RR", self._rr_state)]:
             pattern = rf"{motor_id}\s+RPM:[\d.-]+\s+F:[\d.-]+\s+PWM:[\d.-]+\s+Out:[\d.-]+\s+Dir:(FWD|REV|STP)"
             dir_match = re.search(pattern, msg.data)
             if dir_match:
@@ -127,8 +160,12 @@ class _Ros2Bridge(Node):
         # Attach motor states
         self._fl_state.target_rpm = self._target_value
         self._fr_state.target_rpm = self._target_value
+        self._rl_state.target_rpm = self._target_value
+        self._rr_state.target_rpm = self._target_value
         state.motors["FL"] = self._fl_state
         state.motors["FR"] = self._fr_state
+        state.motors["RL"] = self._rl_state
+        state.motors["RR"] = self._rr_state
 
         if state.motors:
             self._last_emit = time.time()  # prevent _try_emit double-emitting
@@ -147,6 +184,8 @@ class _Ros2Bridge(Node):
         state.target_value = self._target_value
         state.motors["FL"] = self._fl_state
         state.motors["FR"] = self._fr_state
+        state.motors["RL"] = self._rl_state
+        state.motors["RR"] = self._rr_state
 
         for cb in self._callbacks:
             cb(state)

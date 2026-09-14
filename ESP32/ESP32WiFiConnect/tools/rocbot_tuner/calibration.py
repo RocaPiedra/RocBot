@@ -85,7 +85,7 @@ class ChannelCalibration:
 
         cal = ChannelCalibration()
         cal.on_progress(lambda msg: print(msg))
-        result = await cal.run(transport, ["FL", "FR"], [80, 120, 160])
+        result = await cal.run(transport, ["FL", "FR", "RL", "RR"], [80, 120, 160])
     """
 
     HOLD_SECONDS = 2.0       # Time to wait at each PWM level for steady state
@@ -120,14 +120,14 @@ class ChannelCalibration:
 
         Args:
             transport: Connected Transport object
-            motor_ids: Motors to test (default: ["FL", "FR"])
+            motor_ids: Motors to test (default: ["FL", "FR", "RL", "RR"])
             pwm_levels: PWM levels to test (default: [80, 120, 160, 200])
 
         Returns:
             CalibrationResult with per-motor scales
         """
         if motor_ids is None:
-            motor_ids = ["FL", "FR"]
+            motor_ids = ["FL", "FR", "RL", "RR"]
         if pwm_levels is None:
             pwm_levels = [80, 120, 160, 200]
 
