@@ -8,22 +8,21 @@
 
 ```bash
 cd ESP32/ESP32WiFiConnect
-pio run -t upload          # Build and flash (uses main.cpp)
-pio run -e debug -t upload # Build and flash debug version
-pio device monitor         # Serial monitor (115200 baud)
-pio run -e hello_microros -t upload  # Build & flash micro-ROS hello world test
+pio run -e microros -t upload  # Latest: 4-motor micro-ROS controller
+pio run -e debug -t upload     # Serial tuning/debug version (no ROS)
+pio device monitor             # Serial monitor (115200 baud)
 ```
 
 ## Key Files
 
-- `ESP32/ESP32WiFiConnect/src/main.cpp` — Main motor control loop
-- `ESP32/ESP32WiFiConnect/src/main_debug.cpp` — Debug version with tuning commands
+- `ESP32/ESP32WiFiConnect/src/main_microros.cpp` — Latest: 4-motor micro-ROS controller (WiFi/UDP)
+- `ESP32/ESP32WiFiConnect/src/main_debug.cpp` — Serial tuning/debug version (same commands, no ROS)
 - `ESP32/ESP32WiFiConnect/pid_tuner.py` — Python PID auto-tuner
 - `ESP32/ESP32WiFiConnect/include/MotorController.hpp` — Motor class
 - `ESP32/ESP32WiFiConnect/include/PIDClass.hpp` — PID controller
 - `ESP32/ESP32WiFiConnect/include/ssid.hpp` — WiFi credentials (gitignored)
-- `ESP32/ESP32WiFiConnect/src/main_microros.cpp` — Full micro-ROS motor controller
-- `ESP32/ESP32WiFiConnect/src/hello_microros.cpp` — Minimal micro-ROS hello world test
+- `ESP32/ESP32WiFiConnect/test/main_serial.cpp` — Legacy serial-only version (archived)
+- `ESP32/ESP32WiFiConnect/test/hello_microros.cpp` — Minimal micro-ROS transport smoke test
 
 ## Motor Pin Assignments (ESP32)
 
