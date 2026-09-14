@@ -31,15 +31,17 @@ The motor control subsystem has evolved through four iterations, from a simple s
 
 - 5ms refresh rate (fastest yet)
 - C++ classes: `MotorController`, `PIDClass`, `AuxFunctions`
-- Dual motor (FL, FR) with independent control
-- Timer1 PWM frequency modification for quieter motor operation
+- Quad motor (FL, FR, RL, RR) with independent control
+- Timer1 PWM frequency modification for quieter motor operation (AVR); LEDC on ESP32
 
-## Pin Assignments (MotorControlPID)
+## Pin Assignments (ESP32 — 4-motor omnidirectional)
 
 | Motor | PWM | ENCA | ENCB | IN1 | IN2 |
 |-------|-----|------|------|-----|-----|
-| FR    | 14  | 12   | 13   | 27  | 26  |
+| FR    | 14  | 22   | 23   | 27  | 26  |
 | FL    | 32  | 35   | 34   | 33  | 25  |
+| RR    | 18  | 36   | 39   | 19  | 21  |
+| RL    | 13  | 16   | 17   | 4   | 5   |
 
 ## Control Loop (5ms)
 

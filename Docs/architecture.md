@@ -89,14 +89,14 @@ Each wheel has:
 - L298N H-bridge driver (PWM + 2 direction pins)
 - Encoder channels A (interrupt, RISING) + B (direction)
 
-### Pin Assignments
+### Pin Assignments (ESP32 — 4-motor omnidirectional)
 
 | Motor | PWM | ENCA | ENCB | IN1 | IN2 |
 |-------|-----|------|------|-----|-----|
 | FL    | 32  | 35   | 34   | 33  | 25  |
-| FR    | 14  | 12   | 13   | 27  | 26  |
-| BL    | TBD | TBD  | TBD  | TBD | TBD |
-| BR    | TBD | TBD  | TBD  | TBD | TBD |
+| FR    | 14  | 22   | 23   | 27  | 26  |
+| RL    | 13  | 16   | 17   | 4   | 5   |
+| RR    | 18  | 36   | 39   | 19  | 21  |
 
 ### IMU
 

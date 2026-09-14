@@ -31,10 +31,13 @@ pio run -e hello_microros -t upload  # Build & flash micro-ROS hello world test
 |-------|-----|------|------|-----|-----|
 | FR    | 14  | 22   | 23   | 27  | 26  |
 | FL    | 32  | 35   | 34   | 33  | 25  |
+| RR    | 18  | 36   | 39   | 19  | 21  |
+| RL    | 13  | 16   | 17   | 4   | 5   |
 
 ## Hardware Configuration
 
-- **Motor Driver**: L298N with dual isolated channels (ONE driver for both motors)
+- **Motor Drivers**: 2x L298N, dual channels each (L298N #1: FL+FR, L298N #2: RL+RR)
+- **Drive**: 4-wheel omnidirectional (mecanum/omni kinematics on Jetson/ROS 2, per-wheel PID on ESP32)
 - **Encoder Direction**: INVERTED - ENCB LOW = forward, ENCB HIGH = reverse (fixed in code)
 
 ## Known Issues

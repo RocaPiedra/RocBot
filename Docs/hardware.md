@@ -62,12 +62,16 @@ Each L298N drives two motors:
 
 I2C address: **0x4B** (75 decimal)
 
-## Pin Assignments (MotorControlPID)
+## Pin Assignments (ESP32 — 4-motor omnidirectional)
 
 | Motor | PWM | ENCA | ENCB | IN1 | IN2 |
 |-------|-----|------|------|-----|-----|
-| FR | 14 | 12 | 13 | 27 | 26 |
+| FR | 14 | 22 | 23 | 27 | 26 |
 | FL | 32 | 35 | 34 | 33 | 25 |
+| RR | 18 | 36 | 39 | 19 | 21 |
+| RL | 13 | 16 | 17 | 4 | 5 |
+
+L298N #1 drives FL+FR, L298N #2 drives RL+RR. See [Electric Components](electric_components.md) for full wiring.
 
 ## PWM Configuration (AVR)
 

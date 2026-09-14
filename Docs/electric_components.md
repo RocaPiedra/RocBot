@@ -93,21 +93,39 @@ The encoder produces quadrature pulses. In the firmware, we use **RISING edge on
 
 ### Wiring
 
-Each L298N drives **two motors** (one L298N per side, or split front/back). The RocBot uses a single L298N for both front motors (FL + FR), with both channels driven by the same ESP32.
+Each L298N drives **two motors**. L298N #1 drives the front motors (FL + FR), L298N #2 drives the rear motors (RL + RR).
+
+L298N #1 (front):
 
 | Terminal | Connection | Notes |
 |----------|-----------|-------|
 | **VCC** (12V) | Battery positive (+14.8V) | Motor power supply |
 | **GND** | Battery ground + ESP32 ground | Common ground reference |
 | **5V** | Not used / jumper removed | Do not power logic from this; it introduces noise |
-| **ENA** | ESP32 PWM pin (e.g., GPIO 32) | Speed control for motor A (FL) |
-| **IN1** | ESP32 GPIO (e.g., GPIO 33) | Direction A (motor A forward) |
-| **IN2** | ESP32 GPIO (e.g., GPIO 25) | Direction A (motor A reverse) |
-| **ENB** | ESP32 PWM pin (e.g., GPIO 14) | Speed control for motor B (FR) |
-| **IN3** | ESP32 GPIO (e.g., GPIO 27) | Direction B (motor B forward) |
-| **IN4** | ESP32 GPIO (e.g., GPIO 26) | Direction B (motor B reverse) |
+| **ENA** | ESP32 PWM pin GPIO 32 | Speed control for motor A (FL) |
+| **IN1** | ESP32 GPIO 33 | Direction A (motor A forward) |
+| **IN2** | ESP32 GPIO 25 | Direction A (motor A reverse) |
+| **ENB** | ESP32 PWM pin GPIO 14 | Speed control for motor B (FR) |
+| **IN3** | ESP32 GPIO 27 | Direction B (motor B forward) |
+| **IN4** | ESP32 GPIO 26 | Direction B (motor B reverse) |
 | **OUT1 / OUT2** | Motor A terminals | FL motor |
 | **OUT3 / OUT4** | Motor B terminals | FR motor |
+
+L298N #2 (rear):
+
+| Terminal | Connection | Notes |
+|----------|-----------|-------|
+| **VCC** (12V) | Battery positive (+14.8V) | Motor power supply, thick wire |
+| **GND** | Battery ground + ESP32 ground | Common ground reference |
+| **5V** | Not used / jumper removed | Same as #1 |
+| **ENA** | ESP32 PWM pin GPIO 13 | Speed control for motor A (RL) |
+| **IN1** | ESP32 GPIO 4 | Direction A (RL forward) |
+| **IN2** | ESP32 GPIO 5 | Direction A (RL reverse, strapping pin — ESP32-driven output, OK) |
+| **ENB** | ESP32 PWM pin GPIO 18 | Speed control for motor B (RR) |
+| **IN3** | ESP32 GPIO 19 | Direction B (RR forward) |
+| **IN4** | ESP32 GPIO 21 | Direction B (RR reverse) |
+| **OUT1 / OUT2** | Motor A terminals | RL motor |
+| **OUT3 / OUT4** | Motor B terminals | RR motor |
 
 ### Direction Truth Table
 
@@ -155,7 +173,7 @@ The ESP32 was chosen as the main motor controller because it provides:
 - **Fast CPU** — 240 MHz handles the 5ms PID control loop easily alongside micro-ROS communication
 - **PlatformIO support** — robust C++ development with library management
 
-### Pin Assignments (Current)
+### Pin Assignments (Current — 4-motor omnidirectional)
 
 | Motor | Function | GPIO |
 |-------|----------|------|
@@ -169,8 +187,22 @@ The ESP32 was chosen as the main motor controller because it provides:
 | **FR** | ENCB (direction) | 23 |
 | **FR** | IN1 | 27 |
 | **FR** | IN2 | 26 |
+| **RR** | PWM | 18 |
+| **RR** | ENCA (interrupt) | 36 |
+| **RR** | ENCB (direction) | 39 |
+| **RR** | IN1 | 19 |
+| **RR** | IN2 | 21 |
+| **RL** | PWM | 13 |
+| **RL** | ENCA (interrupt) | 16 |
+| **RL** | ENCB (direction) | 17 |
+| **RL** | IN1 | 4 |
+| **RL** | IN2 | 5 |
 
-> 📝 **Note**: The back motors (BL, BR) are not yet wired in the current firmware. The ESP32 has enough GPIOs for all 4 motors once the chassis is expanded.
+> 📝 **Notes**:
+> - `36, 39` are input-only — ideal for encoders.
+> - `16, 17` are UART2 pins, free and safe for encoders.
+> - `5` is a strapping pin — OK as ESP32-driven output to L298N (high-impedance input).
+> - Avoid `1, 3` (USB serial), `0` (BOOT), `6-11` (flash), `12` (strapping).
 
 ---
 
@@ -199,23 +231,22 @@ The ESP32 was chosen as the main motor controller because it provides:
               │                             │
               ▼                             ▼
      ┌──────────────┐              ┌──────────────┐
-     │   L298N #1   │              │   L298N #2   │  ← (future: BL/BR)
-     │   (FL + FR)  │              │  (BL + BR)   │
+     │   L298N #1   │              │   L298N #2   │
+     │   (FL + FR)  │              │   (RL + RR)  │
      └──────┬───────┘              └──────┬───────┘
             │                             │
      ┌──────┴──────┐              ┌──────┴──────┐
-     │  FL Motor   │              │  FR Motor   │
+     │  FL / FR    │              │  RL / RR    │
      │ JGB-520     │              │ JGB-520     │
-     │ + Encoder   │              │ + Encoder   │
+     │ + Encoders  │              │ + Encoders  │
      └──────┬──────┘              └──────┬──────┘
             │                             │
-     ┌──────┴──────┐              ┌──────┴──────┐
-     │   ESP32     │◄────────────►│   ESP32     │
-     │  GPIO 32-35 │   Encoder A  │  GPIO 14,22 │
-     │  GPIO 33,25 │   Encoder B  │  GPIO 23,27 │
-     └─────────────┘              └─────────────┘
-              │                             │
-              ▼                             ▼
+     ┌──────┴─────────────────────────────┴──────┐
+     │                 ESP32                     │
+     │  FL: 32/35/34/33/25  FR: 14/22/23/27/26   │
+     │  RL: 13/16/17/4/5    RR: 18/36/39/19/21   │
+     └───────────────────┬───────────────────────┘
+                         ▼
      ┌─────────────────────────────────────────────┐
      │         WiFi (2.4 GHz) / micro-ROS          │
      │              ↕ Laptop / Jetson                │

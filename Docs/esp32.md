@@ -44,12 +44,14 @@ The WiFi connection code is **currently commented out** in `main.cpp`. When enab
 
 ## Pin Assignments
 
-Same as MotorControlPID version (pins are GPIO numbers on ESP32):
+GPIO numbers on ESP32 (4-motor omnidirectional, see `AGENTS.md`):
 
 | Motor | PWM | ENCA | ENCB | IN1 | IN2 |
 |-------|-----|------|------|-----|-----|
-| FR    | 14  | 12   | 13   | 27  | 26  |
+| FR    | 14  | 22   | 23   | 27  | 26  |
 | FL    | 32  | 35   | 34   | 33  | 25  |
+| RR    | 18  | 36   | 39   | 19  | 21  |
+| RL    | 13  | 16   | 17   | 4   | 5   |
 
 ## Build & Deploy
 
@@ -64,4 +66,4 @@ platformio device monitor
 - Enable WiFi and implement TCP command interface
 - Add OTA (over-the-air) firmware updates
 - Implement ROS 2 micro-ROS node for direct Jetson integration
-- Scale to 4 motors (all wheels)
+- Add mecanum/omni kinematics (per-wheel PID on ESP32, kinematics on Jetson/ROS 2)
