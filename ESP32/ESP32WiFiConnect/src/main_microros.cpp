@@ -353,6 +353,10 @@ void sub_command_callback(const void *msg_in) {
     }
 }
 
+// ============== Forward Declarations ==============
+void publish_motor_states();
+void publish_debug_string();
+
 // ============== Debug Output (serial + ROS) ==============
 void printDebugInfo() {
     if (millis() - lastDebugPrint < debugPrintInterval) return;
@@ -488,16 +492,24 @@ void publish_motor_states() {
     msg_fl_rpm.data = MotorFL.CurrentRPM;
     (void)rcl_publish(&pub_fl_rpm, &msg_fl_rpm, NULL);
 
-    // FL PWM
-    msg_fl_pwm.data = MotorFL.PID.pwr_filt;
+    // FL PWM: publish actual applied speed in direct mode, PID filtered output otherwise
+    if (direct_mode || direct_mode_fl) {
+        msg_fl_pwm.data = MotorFL.currentSpeed;
+    } else {
+        msg_fl_pwm.data = MotorFL.PID.pwr_filt;
+    }
     (void)rcl_publish(&pub_fl_pwm, &msg_fl_pwm, NULL);
 
     // FR RPM
     msg_fr_rpm.data = MotorFR.CurrentRPM;
     (void)rcl_publish(&pub_fr_rpm, &msg_fr_rpm, NULL);
 
-    // FR PWM
-    msg_fr_pwm.data = MotorFR.PID.pwr_filt;
+    // FR PWM: publish actual applied speed in direct mode, PID filtered output otherwise
+    if (direct_mode || direct_mode_fr) {
+        msg_fr_pwm.data = MotorFR.currentSpeed;
+    } else {
+        msg_fr_pwm.data = MotorFR.PID.pwr_filt;
+    }
     (void)rcl_publish(&pub_fr_pwm, &msg_fr_pwm, NULL);
 }
 
@@ -616,6 +628,17 @@ void loop() {
         Serial.println("Step test complete");
     }
 
+    // Always update RPM for all motors at REFRESHRATE interval
+    // (regardless of mode — direct mode still needs RPM for diagnostics)
+    long currT = micros();
+    for(int id = 0; id < NUMMOTORS; id++) {
+        float deltaTms = ((float)(currT - prevT[id])) / 1.0e3;
+        if (deltaTms >= REFRESHRATE) {
+            motors[id]->updateRPM((float)MAXCPR, deltaTms);
+            prevT[id] = currT;
+        }
+    }
+
     // Per-motor direct PWM (from ROS topics) overrides global direct_mode
     if (direct_mode_fl || direct_mode_fr || direct_mode) {
         for(int id = 0; id < NUMMOTORS; id++) {
@@ -635,24 +658,16 @@ void loop() {
             }
         }
     } else if (pid_enabled || step_test_mode) {
-        long currT = micros();
-
         for(int id = 0; id < NUMMOTORS; id++) {
-            float deltaTms = ((float)(currT - prevT[id])) / 1.0e3;
+            // Use ROS target if active, otherwise serial target
+            int actual_target = ros_targets_active ?
+                (id == 0 ? (int)ros_target_fl : (int)ros_target_fr) :
+                (step_test_mode ? step_test_target : target_value);
 
-            if (deltaTms >= REFRESHRATE) {
-                motors[id]->updateRPM((float)MAXCPR, deltaTms);
-                prevT[id] = currT;
-
-                // Use ROS target if active, otherwise serial target
-                int actual_target = ros_targets_active ?
-                    (id == 0 ? (int)ros_target_fl : (int)ros_target_fr) :
-                    (step_test_mode ? step_test_target : target_value);
-
-                motors[id]->controlMotor(actual_target, deltaTms * 1000);
-            }
+            motors[id]->controlMotor(actual_target, REFRESHRATE * 1000);
         }
     }
 
     // Debug output (serial) + ROS publish
     printDebugInfo();
+}

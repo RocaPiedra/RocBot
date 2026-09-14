@@ -516,7 +516,12 @@ def update_motor_cards():
             cards["filt"].set_text(f"Filtered RPM: {motor.rpm_filt:.1f}")
             cards["pwm"].set_text(f"PWM: {motor.pwr_filt:.1f}")
             cards["dir"].set_text(f"Dir: {motor.direction}")
-            cards["err"].set_text(f"Error: {motor.error:.1f}")
+            # In direct mode the concept of PID error is different:
+            # show the RPM value itself as the deviation from 0
+            if state.mode == "DIRECT":
+                cards["err"].set_text(f"RPM: {motor.rpm:.1f}")
+            else:
+                cards["err"].set_text(f"Error: {motor.error:.1f}")
 
 
 # ─── Serial Reader Task ──────────────────────────────────────────────────

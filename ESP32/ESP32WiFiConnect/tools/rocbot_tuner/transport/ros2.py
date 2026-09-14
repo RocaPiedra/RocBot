@@ -7,6 +7,7 @@ from typing import Callable, Optional
 try:
     import rclpy
     from rclpy.node import Node
+    from rclpy.qos import qos_profile_sensor_data
     from std_msgs.msg import Float64, String
     HAS_RCLPY = True
 except ImportError:
@@ -35,14 +36,18 @@ class _Ros2Bridge(Node):
         self._sub_debug = self.create_subscription(
             String, "rocbot/debug", self._on_debug, 10)
 
-        # Publishers
-        self._pub_command = self.create_publisher(String, "rocbot/command", 10)
+        # Publishers (use BEST_EFFORT to match micro-ROS default subscriber QoS)
+        self._pub_command = self.create_publisher(
+            String, "rocbot/command", qos_profile_sensor_data)
 
         # State
         self._fl_state = MotorState(motor_id="FL")
         self._fr_state = MotorState(motor_id="FR")
         self._last_emit = 0.0
         self._emit_interval = 0.05  # 20 Hz
+        self._mode = "STOP"
+        self._target_value = 0.0
+        self._direct_pwm = 0
 
     def register_callback(self, callback: Callable[[ControllerState], None]):
         self._callbacks.append(callback)
@@ -54,7 +59,9 @@ class _Ros2Bridge(Node):
 
     def _on_fl_pwm(self, msg: Float64):
         self._fl_state.pwr_filt = msg.data
-        self._try_emit()
+        # In direct mode the PWM topic may lag; rely on debug string for emission
+        if self._mode != "DIRECT":
+            self._try_emit()
 
     def _on_fr_rpm(self, msg: Float64):
         self._fr_state.rpm = msg.data
@@ -63,22 +70,27 @@ class _Ros2Bridge(Node):
 
     def _on_fr_pwm(self, msg: Float64):
         self._fr_state.pwr_filt = msg.data
-        self._try_emit()
+        if self._mode != "DIRECT":
+            self._try_emit()
 
     def _on_debug(self, msg: String):
-        # Parse debug string for mode/pid info
+        # Parse debug string for mode/pid info and direct PWM values
         import re
         state = ControllerState()
         state.timestamp = time.time()
 
         if "STEP_TEST->" in msg.data:
             state.mode = "STEP_TEST"
+            self._mode = "STEP_TEST"
         elif "DIRECT:" in msg.data:
             state.mode = "DIRECT"
+            self._mode = "DIRECT"
         elif " PID" in msg.data:
             state.mode = "PID"
+            self._mode = "PID"
         elif " STOP" in msg.data:
             state.mode = "STOP"
+            self._mode = "STOP"
 
         kp_match = re.search(r"Kp:([\d.]+)", msg.data)
         ki_match = re.search(r"Ki:([\d.]+)", msg.data)
@@ -87,15 +99,39 @@ class _Ros2Bridge(Node):
         if kp_match: state.kp = float(kp_match.group(1))
         if ki_match: state.ki = float(ki_match.group(1))
         if kd_match: state.kd = float(kd_match.group(1))
-        if tgt_match: state.target_value = float(tgt_match.group(1))
+        if tgt_match:
+            state.target_value = float(tgt_match.group(1))
+            self._target_value = state.target_value
+
+        # Parse global direct PWM from the header (e.g., DIRECT:FWD 100)
+        direct_match = re.search(r"DIRECT:(FWD|REV)\s+(\d+)", msg.data)
+        if direct_match:
+            self._direct_pwm = int(direct_match.group(2))
+            # Override the stale PID.pwr_filt with the actual direct PWM
+            # so the dashboard shows the real value being applied
+            self._fl_state.pwr_filt = float(self._direct_pwm)
+            self._fr_state.pwr_filt = float(self._direct_pwm)
+
+        # Parse per-motor direction from the motor blocks
+        # Format: FL RPM:28.5 F:28.1 PWM:120.5 Out:12.0 Dir:FWD Pulses:42
+        for motor_id, motor_state in [("FL", self._fl_state), ("FR", self._fr_state)]:
+            pattern = rf"{motor_id}\s+RPM:[\d.-]+\s+F:[\d.-]+\s+PWM:[\d.-]+\s+Out:[\d.-]+\s+Dir:(FWD|REV|STP)"
+            dir_match = re.search(pattern, msg.data)
+            if dir_match:
+                motor_state.direction = dir_match.group(1)
+            # Also parse per-motor direct PWM if present (e.g., FL:100)
+            per_motor_pwm = re.search(rf"{motor_id}:(\d+)", msg.data)
+            if per_motor_pwm:
+                motor_state.pwr_filt = float(per_motor_pwm.group(1))
 
         # Attach motor states
-        self._fl_state.target_rpm = state.target_value
-        self._fr_state.target_rpm = state.target_value
+        self._fl_state.target_rpm = self._target_value
+        self._fr_state.target_rpm = self._target_value
         state.motors["FL"] = self._fl_state
         state.motors["FR"] = self._fr_state
 
         if state.motors:
+            self._last_emit = time.time()  # prevent _try_emit double-emitting
             for cb in self._callbacks:
                 cb(state)
 
@@ -107,6 +143,8 @@ class _Ros2Bridge(Node):
         self._last_emit = now
         state = ControllerState()
         state.timestamp = now
+        state.mode = self._mode
+        state.target_value = self._target_value
         state.motors["FL"] = self._fl_state
         state.motors["FR"] = self._fr_state
 

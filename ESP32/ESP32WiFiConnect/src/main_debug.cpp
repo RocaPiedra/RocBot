@@ -317,25 +317,26 @@ void loop() {
         Serial.println("Step test complete");
     }
     
+    // Always update RPM for all motors at REFRESHRATE interval
+    long currT = micros();
+    for(int id = 0; id < NUMMOTORS; id++) {
+        float deltaTms = ((float)(currT - prevT[id])) / 1.0e3;
+        if (deltaTms >= REFRESHRATE) {
+            motors[id]->updateRPM((float)MAXCPR, deltaTms);
+            prevT[id] = currT;
+        }
+    }
+
     if (direct_mode) {
         for(int id = 0; id < NUMMOTORS; id++) {
             motors[id]->SetDirection(!reverse_direct);
             motors[id]->SetSpeed(direct_pwm);
         }
     } else if (pid_enabled || step_test_mode) {
-        long currT = micros();
-        
         for(int id = 0; id < NUMMOTORS; id++) {
-            float deltaTms = ((float)(currT - prevT[id])) / 1.0e3;
-            
-            if (deltaTms >= REFRESHRATE) {
-                motors[id]->updateRPM((float)MAXCPR, deltaTms);
-                prevT[id] = currT;
-                
-                // In step test mode, target is step_test_target
-                int actual_target = step_test_mode ? step_test_target : target_value;
-                motors[id]->controlMotor(actual_target, deltaTms * 1000);
-            }
+            // In step test mode, target is step_test_target
+            int actual_target = step_test_mode ? step_test_target : target_value;
+            motors[id]->controlMotor(actual_target, REFRESHRATE * 1000);
         }
     }
     
