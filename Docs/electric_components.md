@@ -93,7 +93,12 @@ The encoder produces quadrature pulses. In the firmware, we use **RISING edge on
 
 ### Wiring
 
-Each L298N drives **two motors**. L298N #1 drives the front motors (FL + FR), L298N #2 drives the rear motors (RL + RR).
+Each L298N drives **two motors** on its fixed terminal strip
+`ENA – IN1 – IN2 – IN3 – IN4 – ENB`: channel A (`ENA/IN1/IN2`,
+`OUT1/OUT2`) drives one motor, channel B (`IN3/IN4/ENB`,
+`OUT3/OUT4`) drives the other. L298N #1 drives the front motors
+(FR on channel A, FL on channel B), L298N #2 drives the rear
+motors (RR on channel A, RL on channel B).
 
 L298N #1 (front):
 
@@ -101,15 +106,22 @@ L298N #1 (front):
 |----------|-----------|-------|
 | **VCC** (12V) | Battery positive (+14.8V) | Motor power supply |
 | **GND** | Battery ground + ESP32 ground | Common ground reference |
-| **5V** | Not used / jumper removed | Do not power logic from this; it introduces noise |
-| **ENA** | ESP32 PWM pin GPIO 32 | Speed control for motor A (FL) |
-| **IN1** | ESP32 GPIO 33 | Direction A (motor A forward) |
-| **IN2** | ESP32 GPIO 25 | Direction A (motor A reverse) |
-| **ENB** | ESP32 PWM pin GPIO 14 | Speed control for motor B (FR) |
-| **IN3** | ESP32 GPIO 27 | Direction B (motor B forward) |
-| **IN4** | ESP32 GPIO 26 | Direction B (motor B reverse) |
-| **OUT1 / OUT2** | Motor A terminals | FL motor |
-| **OUT3 / OUT4** | Motor B terminals | FR motor |
+| **5V** | Onboard 5V output (5V jumper ON, verified) | Powers logic — do NOT feed external 5V here, see Jumpers below |
+| **ENA** | ESP32 PWM pin GPIO 14 | Channel A speed (FR) |
+| **IN1** | ESP32 GPIO 27 | Channel A direction 1 (FR) |
+| **IN2** | ESP32 GPIO 26 | Channel A direction 2 (FR) |
+| **IN3** | ESP32 GPIO 25 | Channel B direction 1 (FL — ⚠️ crossed, see note) |
+| **IN4** | ESP32 GPIO 33 | Channel B direction 2 (FL — ⚠️ crossed, see note) |
+| **ENB** | ESP32 PWM pin GPIO 32 | Channel B speed (FL) |
+| **OUT1 / OUT2** | FR motor terminals | Channel A motor |
+| **OUT3 / OUT4** | FL motor terminals | Channel B motor |
+
+> ℹ️ **FL channel is cross-wired on purpose**: the firmware's
+> `In1Pin` (GPIO 33) lands on terminal **IN4**, and `In2Pin`
+> (GPIO 25) on terminal **IN3**. The left/right motors are
+> mirror-mounted, so FL needs opposite electrical polarity to
+> travel the same direction as FR. Verified: `D100` drives both
+> front wheels forward together.
 
 L298N #2 (rear):
 
@@ -117,24 +129,56 @@ L298N #2 (rear):
 |----------|-----------|-------|
 | **VCC** (12V) | Battery positive (+14.8V) | Motor power supply, thick wire |
 | **GND** | Battery ground + ESP32 ground | Common ground reference |
-| **5V** | Not used / jumper removed | Same as #1 |
-| **ENA** | ESP32 PWM pin GPIO 13 | Speed control for motor A (RL) |
-| **IN1** | ESP32 GPIO 4 | Direction A (RL forward) |
-| **IN2** | ESP32 GPIO 5 | Direction A (RL reverse, strapping pin — ESP32-driven output, OK) |
-| **ENB** | ESP32 PWM pin GPIO 18 | Speed control for motor B (RR) |
-| **IN3** | ESP32 GPIO 19 | Direction B (RR forward) |
-| **IN4** | ESP32 GPIO 21 | Direction B (RR reverse) |
-| **OUT1 / OUT2** | Motor A terminals | RL motor |
-| **OUT3 / OUT4** | Motor B terminals | RR motor |
+| **5V** | Onboard 5V output (5V jumper ON, verified) | Same as #1 — do NOT feed external 5V here |
+| **ENA** | ESP32 PWM pin GPIO 18 | Channel A speed (RR) |
+| **IN1** | ESP32 GPIO 19 | Channel A direction 1 (RR) |
+| **IN2** | ESP32 GPIO 21 | Channel A direction 2 (RR) |
+| **IN3** | ESP32 GPIO 4 | Channel B direction 1 (RL) |
+| **IN4** | ESP32 GPIO 5 | Channel B direction 2 (RL, strapping pin — ESP32-driven output, OK) |
+| **ENB** | ESP32 PWM pin GPIO 13 | Channel B speed (RL) |
+| **OUT1 / OUT2** | RR motor terminals | Channel A motor |
+| **OUT3 / OUT4** | RL motor terminals | Channel B motor |
+
+> ℹ️ **RL channel is wired straight** (terminal IN3 = GPIO 4,
+> IN4 = GPIO 5, matching firmware order) — unlike FL. Since the
+> rear motors are also mirror-mounted, expect a global command
+> to spin them in *opposite* travel directions. Verify with
+> `D100`: if the rear wheels fight each other, cross RL the
+> same way as FL (terminal IN3 = GPIO 5, IN4 = GPIO 4).
+
+> ⚠️ **Forward polarity UNVERIFIED**: OUT wiring follows the
+> standard channel layout, but confirm with `d100` (expect all
+> wheels forward) and `D100` (all reverse) after flashing. If a
+> wheel spins backwards, swap its OUT1/OUT2 (or OUT3/OUT4) wires.
+
+### Jumpers (both L298Ns — as built and verified)
+
+| Jumper | State | Why |
+|--------|-------|-----|
+| **ENA** | **OFF (removed)** ✅ | ON hard-wires enable HIGH → motor stuck at full speed, PWM ignored |
+| **ENB** | **OFF (removed)** ✅ | Same as ENA |
+| **5V / VCC-select** | **ON (kept)** ✅ | Onboard regulator powers the logic from VCC. This has worked in testing — but note the 14.8V caveat below |
+
+> ⚠️ **5V jumper ON + 14.8V pack**: the onboard linear regulator
+> burns `(14.8 − 5) × I₅ᵥ` as heat, so keep the 5V load light
+> (logic + ESP32 only, no servos/sensors strips). **Never connect
+> an external 5V supply to the 5V pin while this jumper is on**
+> — the two regulators would fight. If you see ESP32 brownouts
+> (resets during WiFi TX or 4-motor load) or a scorching
+> regulator, switch to the external buck in
+> [Power Supply](power_supply.md) (Option 2) and remove the 5V
+> jumper.
 
 ### Direction Truth Table
 
-| IN1 | IN2 | Motor A behavior |
+| IN1 | IN2 | Channel A behavior |
 |-----|-----|-----------------|
 | LOW | LOW | Stop (coast) |
 | HIGH | LOW | Forward |
 | LOW | HIGH | Reverse |
 | HIGH | HIGH | Brake (short circuit) |
+
+Channel B behaves identically with `IN3/IN4` in place of `IN1/IN2`.
 
 > 💡 **Known Issue**: The L298N is not a modern driver — it has ~1.5V–2V voltage drop per channel, which means the motors only see ~12V–13V from a 14.8V battery. This results in lower top speed and wasted heat. For future upgrades, consider the **TB6612FNG** or **DRV8833** (MOSFET-based, lower drop, higher efficiency).
 

@@ -59,13 +59,14 @@ RocBot is an omnidirectional Autonomous Mobile Robot (AMR) built from low-cost, 
 │  │  └──────────────────────────┘  └──────┬───────┘ │   │
 │  └──────────────────────────────────────────────────┘   │
 │                       │                                 │
-│         ┌─────────────┼─────────────┐                   │
-│         │             │             │                   │
-│    ┌────┴────┐  ┌────┴────┐  ┌────┴────┐              │
-│    │ Motor FL │  │ Motor FR │  │ Motor BL │  Motor BR  │
-│    │ L298N    │  │ L298N    │  │ L298N    │  L298N     │
-│    │ Encoder  │  │ Encoder  │  │ Encoder  │  Encoder   │
-│    └─────────┘  └─────────┘  └─────────┘              │
+│         ┌─────────────┴─────────────┐                   │
+│         │                           │                   │
+│    ┌────┴──────────────────┐  ┌─────┴─────────────────┐ │
+│    │ L298N #1 (front)      │  │ L298N #2 (rear)       │ │
+│    │ ch A: Motor FR        │  │ ch A: Motor RR        │ │
+│    │ ch B: Motor FL        │  │ ch B: Motor RL        │ │
+│    │ + encoders            │  │ + encoders            │ │
+│    └───────────────────────┘  └───────────────────────┘ │
 │                                                         │
 │    ┌────────────────────────────────────────────┐       │
 │    │  IMU BNO080 (I2C: 0x4B)                    │       │
@@ -91,12 +92,22 @@ Each wheel has:
 
 ### Pin Assignments (ESP32 — 4-motor omnidirectional)
 
-| Motor | PWM | ENCA | ENCB | IN1 | IN2 |
-|-------|-----|------|------|-----|-----|
-| FL    | 32  | 35   | 34   | 33  | 25  |
-| FR    | 14  | 22   | 23   | 27  | 26  |
-| RL    | 13  | 16   | 17   | 4   | 5   |
-| RR    | 18  | 36   | 39   | 19  | 21  |
+L298N terminal strip per driver is `ENA – IN1 – IN2 – IN3 – IN4 – ENB`
+(channel A = `ENA/IN1/IN2`, channel B = `IN3/IN4/ENB`).
+`IN1/IN2` below are the firmware's per-motor direction-pin names.
+
+| Motor | Driver / Channel | PWM (ENAx) | ENCA | ENCB | IN1 | IN2 |
+|-------|------------------|------------|------|------|-----|-----|
+| FR    | L298N #1, ch A | 14 (ENA) | 22 | 23 | 27 (IN1) | 26 (IN2) |
+| FL    | L298N #1, ch B | 32 (ENB) | 35 | 34 | 33 (→IN4 ⚠️) | 25 (→IN3 ⚠️) |
+| RR    | L298N #2, ch A | 18 (ENA) | 36 | 39 | 19 (IN1) | 21 (IN2) |
+| RL    | L298N #2, ch B | 13 (ENB) | 16 | 17 | 4 (IN3) | 5 (IN4) |
+
+Full terminal-level wiring + jumpers: see
+[Electric Components](electric_components.md). FL is cross-wired
+(IN3 = 25, IN4 = 33) for the mirror-mounted motors — verified
+(`D100` = both front wheels forward). RL is straight, rear
+still untested.
 
 ### IMU
 
