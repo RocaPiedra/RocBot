@@ -30,14 +30,17 @@
 #define MAXCPR 330
 #define MAXRPM 330
 #define REFRESHRATE 5 // ms
-#define NUMMOTORS 2
+#define NUMMOTORS 4 // FL, FR, RL, RR
 
-// Pin assignments
+// Pin assignments (ESP32) — see AGENTS.md
+// L298N #1 (front): FL + FR | L298N #2 (rear): RL + RR
 MotorController MotorFR("FR", 14, 22, 23, 27, 26, 1.0, 0.0, 0.0);
 MotorController MotorFL("FL", 32, 35, 34, 33, 25, 1.0, 0.0, 0.0);
-MotorController* motors[NUMMOTORS] = {&MotorFL, &MotorFR};
+MotorController MotorRL("RL", 13, 16, 17, 4, 5, 1.0, 0.0, 0.0);
+MotorController MotorRR("RR", 18, 36, 39, 19, 21, 1.0, 0.0, 0.0);
+MotorController* motors[NUMMOTORS] = {&MotorFL, &MotorFR, &MotorRL, &MotorRR};
 
-long prevT[NUMMOTORS] = {0, 0};
+long prevT[NUMMOTORS] = {0, 0, 0, 0};
 int target_value = 0;
 bool pid_enabled = false;
 bool direct_mode = false;
@@ -54,6 +57,8 @@ unsigned long debugPrintInterval = 100;
 
 volatile unsigned long encFR_interrupts = 0;
 volatile unsigned long encFL_interrupts = 0;
+volatile unsigned long encRL_interrupts = 0;
+volatile unsigned long encRR_interrupts = 0;
 
 void IRAM_ATTR ISRReadEncoderFR() {
     MotorFR.readEncoder();
@@ -63,6 +68,16 @@ void IRAM_ATTR ISRReadEncoderFR() {
 void IRAM_ATTR ISRReadEncoderFL() {
     MotorFL.readEncoder();
     encFL_interrupts++;
+}
+
+void IRAM_ATTR ISRReadEncoderRL() {
+    MotorRL.readEncoder();
+    encRL_interrupts++;
+}
+
+void IRAM_ATTR ISRReadEncoderRR() {
+    MotorRR.readEncoder();
+    encRR_interrupts++;
 }
 
 void readSerialInput() {
@@ -175,6 +190,20 @@ void readSerialInput() {
                 Serial.print(digitalRead(MotorFL.EncBPin));
                 Serial.print(", interrupts=");
                 Serial.println(encFL_interrupts);
+
+                Serial.print("RR: pulses=");
+                Serial.print(MotorRR.GetPulses());
+                Serial.print(", ENCB=");
+                Serial.print(digitalRead(MotorRR.EncBPin));
+                Serial.print(", interrupts=");
+                Serial.println(encRR_interrupts);
+
+                Serial.print("RL: pulses=");
+                Serial.print(MotorRL.GetPulses());
+                Serial.print(", ENCB=");
+                Serial.print(digitalRead(MotorRL.EncBPin));
+                Serial.print(", interrupts=");
+                Serial.println(encRL_interrupts);
                 break;
             }
             case 'p': {
@@ -286,6 +315,8 @@ void setup() {
     
     attachInterrupt(digitalPinToInterrupt(MotorFR.EncAPin), ISRReadEncoderFR, RISING);
     attachInterrupt(digitalPinToInterrupt(MotorFL.EncAPin), ISRReadEncoderFL, RISING);
+    attachInterrupt(digitalPinToInterrupt(MotorRL.EncAPin), ISRReadEncoderRL, RISING);
+    attachInterrupt(digitalPinToInterrupt(MotorRR.EncAPin), ISRReadEncoderRR, RISING);
     
     Serial.println("Encoder interrupts attached");
     
