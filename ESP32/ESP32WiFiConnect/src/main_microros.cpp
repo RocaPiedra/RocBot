@@ -398,7 +398,12 @@ void sub_rr_pwm_cmd_callback(const void *msg_in) {
 
 void sub_command_callback(const void *msg_in) {
     const std_msgs__msg__String *msg = (const std_msgs__msg__String *)msg_in;
-    String cmd = String(msg->data.data);
+    // micro-ROS does not null-terminate the static string buffer, so
+    // terminate it explicitly (capacity 256 always leaves room for it).
+    size_t cmd_len = msg->data.size;
+    if (cmd_len >= sizeof(command_buffer)) cmd_len = sizeof(command_buffer) - 1;
+    command_buffer[cmd_len] = '\0';
+    String cmd = String(command_buffer);
     cmd.trim();
 
     if (cmd.startsWith("kp")) {
