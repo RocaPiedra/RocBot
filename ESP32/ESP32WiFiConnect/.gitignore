@@ -6,3 +6,9 @@
 tools/rocbot_tuner/__pycache__
 tools/rocbot_tuner/transport/__pycache__
 tools/rocbot_tuner/logs
+tools/rocbot_tuner/tuning/__pycache__
+
+ESP32/ESP32WiFiConnect/tools/rocbot_tuner/__pycache__
+ESP32/ESP32WiFiConnect/tools/rocbot_tuner/transport/__pycache__
+ESP32/ESP32WiFiConnect/tools/rocbot_tuner/logs
+ESP32/ESP32WiFiConnect/tools/rocbot_tuner/tuning/__pycache__
