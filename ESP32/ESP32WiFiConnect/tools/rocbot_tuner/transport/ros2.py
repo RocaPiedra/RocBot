@@ -7,7 +7,7 @@ from typing import Callable, Optional
 try:
     import rclpy
     from rclpy.node import Node
-    from rclpy.qos import qos_profile_sensor_data
+    from rclpy.qos import QoSProfile, ReliabilityPolicy, DurabilityPolicy
     from std_msgs.msg import Float64, String
     HAS_RCLPY = True
 except ImportError:
@@ -23,6 +23,9 @@ class _Ros2Bridge(Node):
     def __init__(self):
         super().__init__("rocbot_tuner")
         self._callbacks: list[Callable[[ControllerState], None]] = []
+        # Optional hooks for comm logging (set by the app, never required).
+        # debug_handler receives every raw rocbot/debug string from the ESP32.
+        self.debug_handler: Optional[Callable[[str], None]] = None
 
         # Subscribers (simplified to Float64 per motor)
         self._sub_fl_rpm = self.create_subscription(
@@ -44,9 +47,16 @@ class _Ros2Bridge(Node):
         self._sub_debug = self.create_subscription(
             String, "rocbot/debug", self._on_debug, 10)
 
-        # Publishers (use BEST_EFFORT to match micro-ROS default subscriber QoS)
+        # Command publisher MUST be RELIABLE: the ESP32 subscribes with
+        # rclc_subscription_init_default (rmw_qos_profile_default = RELIABLE),
+        # and DDS silently drops BEST_EFFORT -> RELIABLE (incompatible QoS).
         self._pub_command = self.create_publisher(
-            String, "rocbot/command", qos_profile_sensor_data)
+            String, "rocbot/command",
+            QoSProfile(
+                depth=10,
+                reliability=ReliabilityPolicy.RELIABLE,
+                durability=DurabilityPolicy.VOLATILE,
+            ))
 
         # State
         self._fl_state = MotorState(motor_id="FL")
@@ -106,6 +116,11 @@ class _Ros2Bridge(Node):
     def _on_debug(self, msg: String):
         # Parse debug string for mode/pid info and direct PWM values
         import re
+        if self.debug_handler:
+            try:
+                self.debug_handler(msg.data)
+            except Exception:
+                pass
         state = ControllerState()
         state.timestamp = time.time()
 
@@ -203,6 +218,9 @@ class Ros2Transport(Transport):
         self._node: Optional[_Ros2Bridge] = None
         self._running = False
         self._spin_task: Optional[asyncio.Task] = None
+        # Optional hooks for comm logging (set by the app, never required).
+        self.tx_handler: Optional[Callable[[str], None]] = None
+        self.debug_handler: Optional[Callable[[str], None]] = None
 
     @property
     def is_connected(self) -> bool:
@@ -219,6 +237,8 @@ class Ros2Transport(Transport):
                 rclpy.init()
             
             self._node = _Ros2Bridge()
+            if self.debug_handler:
+                self._node.debug_handler = self.debug_handler
             self._running = True
             self._spin_task = asyncio.create_task(self._spin_loop())
             print("ROS2 transport connected")
@@ -246,6 +266,11 @@ class Ros2Transport(Transport):
         print("ROS2 transport disconnected")
 
     async def send_command(self, cmd: str):
+        if self.tx_handler:
+            try:
+                self.tx_handler(cmd)
+            except Exception:
+                pass
         if self._node:
             self._node.send_command(cmd)
 

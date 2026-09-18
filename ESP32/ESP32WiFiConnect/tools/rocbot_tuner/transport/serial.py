@@ -21,6 +21,9 @@ class SerialTransport(Transport):
         self._serial: Optional[serial.Serial] = None
         self._running = False
         self._start_time = 0.0
+        # Optional hooks for comm logging (set by the app, never required).
+        # raw_handler receives every non-empty raw line seen on the wire.
+        self.raw_handler: Optional[Callable[[str], None]] = None
 
     @property
     def is_connected(self) -> bool:
@@ -79,6 +82,11 @@ class SerialTransport(Transport):
                             continue
 
                         lines_parsed += 1
+                        if self.raw_handler:
+                            try:
+                                self.raw_handler(line)
+                            except Exception:
+                                pass
                         state = self._parse_line(line)
                         if state:
                             lines_matched += 1
