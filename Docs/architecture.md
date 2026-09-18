@@ -100,8 +100,8 @@ L298N terminal strip per driver is `ENA – IN1 – IN2 – IN3 – IN4 – ENB`
 |-------|------------------|------------|------|------|-----|-----|
 | FR    | L298N #1, ch A | 14 (ENA) | 22 | 23 | 27 (IN1) | 26 (IN2) |
 | FL    | L298N #1, ch B | 32 (ENB) | 35 | 34 | 33 (→IN4 ⚠️) | 25 (→IN3 ⚠️) |
-| RR    | L298N #2, ch A | 18 (ENA) | 36 | 39 | 19 (IN1) | 21 (IN2) |
-| RL    | L298N #2, ch B | 13 (ENB) | 16 | 17 | 4 (IN3) | 5 (IN4) |
+| RR    | L298N #2, ch A | 18 (ENA) | 36 (VP) | 39 (VN) | 19 (IN1) | 21 (IN2) |
+| RL    | L298N #2, ch B | 13 (ENB) | 16 (RX2) | 17 (TX2) | 4 (IN3) | 5 (IN4) |
 
 Full terminal-level wiring + jumpers: see
 [Electric Components](electric_components.md). FL is cross-wired

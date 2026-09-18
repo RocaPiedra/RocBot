@@ -232,13 +232,13 @@ The ESP32 was chosen as the main motor controller because it provides:
 | **FR** | IN1 | 27 |
 | **FR** | IN2 | 26 |
 | **RR** | PWM | 18 |
-| **RR** | ENCA (interrupt) | 36 |
-| **RR** | ENCB (direction) | 39 |
+| **RR** | ENCA (interrupt) | 36 (pin labeled **VP**) |
+| **RR** | ENCB (direction) | 39 (pin labeled **VN**) |
 | **RR** | IN1 | 19 |
 | **RR** | IN2 | 21 |
 | **RL** | PWM | 13 |
-| **RL** | ENCA (interrupt) | 16 |
-| **RL** | ENCB (direction) | 17 |
+| **RL** | ENCA (interrupt) | 16 (pin labeled **RX2**) |
+| **RL** | ENCB (direction) | 17 (pin labeled **TX2**) |
 | **RL** | IN1 | 4 |
 | **RL** | IN2 | 5 |
 
