@@ -5,3 +5,4 @@
 .vscode/ipch
 tools/rocbot_tuner/__pycache__
 tools/rocbot_tuner/transport/__pycache__
+tools/rocbot_tuner/logs
